@@ -5,13 +5,14 @@ preparing <- function(mod_segment, desired_model, segment){
   require(ggplot2)
   require(stringr)
   require(caret)
-  require(ROSE)
-  
+  require(foreach)
+
   db = mod_segment %>% filter(segmento == segment) %>% select(-cod_contrato)
   
   perc = table(db$target)[2]/(table(db$target)[1]+table(db$target)[2])
-  paste0("The percentage of bad payers is: ", round(perc, 4), ".") %>% cat()
+  paste0("The percentage of bad payers is: ", round(perc, 4), ". ") %>% cat()
   
+  registerDoSEQ()
   # removing columns with variance = 0 (no discrimination values)
   zerovar = nearZeroVar(db, uniqueCut = 0, foreach = TRUE, allowParallel = TRUE)
   db = db[,-zerovar]
@@ -22,17 +23,24 @@ preparing <- function(mod_segment, desired_model, segment){
   preproc$method$scale = NULL
   db <- predict(preproc, db)
   
+  db$target = as.factor(db$target)
+  
+  set.seed(123)
+  index <- caret::createDataPartition(db$target, p = 0.7, list = FALSE)
+  train_db <- db[index, ]
+  test_db  <- db[-index, ]
+  
   # resampling method: ROSE
   
-  db = db %>% mutate_if(is.character, factor)
-  db_rose <- ROSE(target ~ ., data = db, seed = 1, p = 0.5, hmult.majo = 0.25, hmult.mino = 0.5)$data #in case of concerning about extremely distant neighbourhoods bias important data (or most common data), set hmult.majo = 0.25 and hmult.mino = 0.5 (it will shrunk the space of creation for artificial data)
-  if(perc > 0.5){db_selected = db_rose} else {db_selected = db}
+  # train_db = train_db %>% mutate_if(is.character, factor)
+  # db_rose <- ROSE(target ~ ., data = train_db, seed = 1, p = 0.5, hmult.majo = 0.25, hmult.mino = 0.5)$data #in case of concerning about extremely distant neighbourhoods bias important data (or most common data), set hmult.majo = 0.25 and hmult.mino = 0.5 (it will shrunk the space of creation for artificial data)
+  # if(perc > 0.7){train_db_selected = db_rose} else {train_db_selected = train_db}
+
+  perc = table(train_db$target)[2]/(table(train_db$target)[1]+table(train_db$target)[2])
+  # paste0("After balancing data with ROSE sampling method, the percentage of bad payer is: ", round(perc,4), ".\n\n") %>% cat()
   
-  perc = table(db_rose$target)[2]/(table(db_rose$target)[1]+table(db_rose$target)[2])
-  paste0("After balancing data with ROSE sampling method, the percentage of bad payer is: ", round(perc,4), ".\n\n") %>% cat()
-  
-  bins_mod <<- scorecard::woebin(db_selected, y = "target")
-  
+  bins_mod <<- scorecard::woebin(train_db, y = "target")
+
   setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/", desired_model ,"/Databases"))
   save(bins_mod, file = paste0("bins_mod_", desired_model,"_", segment, ".RData"))
   
@@ -47,19 +55,35 @@ preparing <- function(mod_segment, desired_model, segment){
       width = 15, height = 9, units="cm")
   }
   
-  db_woe = woebin_ply(db_selected, bins_mod)
-  db_woe$target = as.factor(db_woe$target)
+  train_db_woe = as.data.frame(woebin_ply(train_db, bins_mod))
+  test_db_woe = as.data.frame(woebin_ply(test_db, bins_mod))
   
-  set.seed(123)
-  index <- caret::createDataPartition(db_woe$target, p = 0.7, list = FALSE)
-  train_db_woe <- db_woe[index, ]
-  test_db_woe  <- db_woe[-index, ]
+  train_db_woe$target = as.factor(train_db_woe$target)
+  test_db_woe$target = as.factor(test_db_woe$target)
   
-  train_db <- db_selected[index, ]
-  test_db  <- db_selected[-index, ]
+  registerDoSEQ()
   
-  dbs <<- list("train_db_woe" = train_db_woe, "test_db_woe" = test_db_woe, "train_db" = train_db, "test_db" = test_db)
-}
+  zerovar = nearZeroVar(train_db_woe, uniqueCut = 0, foreach = TRUE, allowParallel = TRUE)
+  train_db_woe = train_db_woe[,-zerovar]
+  
+  registerDoSEQ()
+  
+  zerovar = nearZeroVar(test_db_woe, uniqueCut = 0, foreach = TRUE, allowParallel = TRUE)
+  test_db_woe = test_db_woe[,-zerovar]
+
+  # imputing missing data again because in test_woe there are some classes 
+  # of the variables that did not existed when producing bins from train dataset
+  preproc = preProcess(test_db_woe, method = "knnImpute", k = 5)
+  preproc$method$center = NULL
+  preproc$method$scale = NULL
+  test_db_woe <- predict(preproc, test_db_woe)
+  
+  dbs <<- list("train_db_woe" = train_db_woe, 
+               "test_db_woe" = test_db_woe, 
+               "train_db" = train_db, 
+               "test_db" = test_db)
+  
+ }
 
 clustering <- function(probs_by_contract, desired_model, segment){
 
@@ -81,7 +105,7 @@ clustering <- function(probs_by_contract, desired_model, segment){
   ####################################
   
   geom.mean = probs_by_contract %>% mutate_if(is.numeric, funs(`+1` = .+1))
-  x = geom.mean %>% select_if(is.numeric) %>% group_by(cluster) %>% summarise_all(geometric.mean) %>% select(ends_with("+1"))
+  x = geom.mean %>% select_if(is.numeric) %>% group_by(cluster) %>% dplyr::summarise_all(psych::geometric.mean) %>% select(ends_with("+1"))
   x = x %>% mutate_if(is.numeric, funs(`-1` = .-1)) %>% select(ends_with("-1")) %>% arrange(`bad_payer_prob_+1_-1`)
   
   names <- as.data.frame(names(x))
@@ -136,78 +160,108 @@ clustering <- function(probs_by_contract, desired_model, segment){
   dev.off()
 }
 
-writing <- function(model, coefs, probs_by_contract, imp, desired_model, segment){
+writing <- function(glm.model, selected_var, probs_by_contract, imp, desired_model, segment, perf_stats){
 
 require(data.table)
 require(stringr)
   
   # Automatically creating files for desired outputs
   setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/",desired_model, "/Models"))
-  save(model, file = paste0("glm_model_", desired_model,"_",segment,"_", Sys.Date(),".RData"))
+  save(glm.model, file = paste0("glm_model_", desired_model,"_",segment,"_", Sys.Date(),".RData"))
     
   setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/", desired_model, "/Predictions"))
   save(selected_var, file = paste0("selected_var_", desired_model, "_", segment,"_", Sys.Date(),".RData"))
   fwrite(probs_by_contract, file = paste0("glm_model_predictions_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
   save(probs_by_contract, file = paste0("probs_by_contract_", desired_model, "_", segment,"_", Sys.Date(),".RData"))
   fwrite(imp, file = paste0("var_importance_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
+  fwrite(perf_stats, file = paste0("performance_stats_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
   }
 
-develop_scorecard <- function(db, selected_var, desired_model, segment){
+develop_scorecard <- function(selected_var, desired_model, segment){
   
   require(dplyr)
   require(ggplot2)
   require(scorecard)
   require(gridExtra)
+  require(reshape2)
+  require(stringr)
+  require(psych)
+  require(tidyverse)
+  require(rlang)
   
-  db_to_predict = dbs$test_db
-  db_to_predict$target = ifelse(db_to_predict$target == 1, "bad payer", "good payer")
+  db_to_predict = dbs$test_db_woe
+  
+  #db_to_predict$target = ifelse(db_to_predict$target == 1, "bad payer", "good payer")
+  db_to_predict$target = as.factor(db_to_predict$target)
+  db_to_predict = model.matrix(target ~ ., db_to_predict)[,-1]
   
   points0 = 600
   odds0 = 50
   pdo = 20
   
-  card <<- scorecard(bins_mod, glm.model, 
-                     points0 = points0, 
-                     odds0 = 1/odds0, 
-                     pdo = pdo)
+  pred = predict(lasso.model, newx = db_to_predict)
+  resp = predict(lasso.model, newx = db_to_predict, type = "response")
   
-  sc = scorecard_ply(db_to_predict, card, only_total_score = FALSE)
+  db_to_predict = dbs$test_db_woe
   
-  final_scorecard <<- bind_rows(card) %>% select(-count, -count_distr, -good, -bad, -is_special_values, -breaks)
+  factor = pdo/log(2)
+  offset = points0 - factor * log(odds0)
   
-  db_to_predict <<- data.frame(select(db_to_predict, selected_var), sc)
+  final_db = db_to_predict %>% mutate(logit = pred,
+                                    odds = exp(pred),
+                                    prob = odds/(odds + 1),
+                                    prob_ctrl = resp)  
   
-  db_to_predict %>% 
-    group_by(target) %>% 
-    summarise(tb = mean(score)) %>% 
-    ungroup() -> mean_score_db_to_predict
+  factor = pdo / log(2)
+  offset = points0 - factor * log(odds0)
   
-  p1 <- db_to_predict %>% 
-    ggplot(aes(score, color = factor(target), fill = factor(target))) + 
-    geom_density(alpha = 0.3) + 
-    geom_vline(aes(xintercept = mean_score_db_to_predict$tb[1]), linetype = "dashed", color = "red") + 
-    geom_vline(aes(xintercept = mean_score_db_to_predict$tb[2]), linetype = "dashed", color = "blue") + 
-    guides(fill = "legend", colour = "none") +
-    theme(legend.position="bottom") +
-    labs(x = "collection score", y = "density", fill = "original target", color = "none", title = "Figure 1: Scorecard Distribution by two original collection targets for test data", 
-         subtitle = "The scorecard point is a numeric expression measuring collectionworthiness. \nCommercial Banks usually utilize it as a method to support the decision-making about collection actions.")
+  final_db$score_ctrl = offset - (factor*final_db$logit)
+  final_db$score = round(final_db$score_ctrl,0)
   
+  score_metrics = c("logit", "odds", "prob", "prob_ctrl", "score_ctrl", "score")
+  
+  ##############################
+  # 
+  # card <<- scorecard(bins_mod, model.glm, 
+  #                    points0 = points0, 
+  #                    odds0 = 1/odds0, 
+  #                    pdo = pdo)
+  
+  # sc = scorecard_ply(db_to_predict, card, only_total_score = TRUE)
+
+  final_scorecard <<- bind_rows(bins_mod) %>% filter(variable %in% selected_var) %>% dplyr::select(-count, -count_distr, -good, -bad, -is_special_values, -breaks)
+  
+  db_to_predict = dbs$test_db
+  db_to_predict <- data.frame(dplyr::select(db_to_predict, c(selected_var, target)), dplyr::select(final_db, score_metrics))
+
   set.seed(123)
   centers <- kmeans(db_to_predict$score, centers = 4, iter.max = 500, nstart = 100)$centers
   centers <- sort(centers)
   set.seed(123)
   clusters <- kmeans(db_to_predict$score, centers = centers, iter.max = 500, nstart = 100)
-  db_to_predict$cluster = clusters$cluster
+  db_to_predict$cluster = as.factor(clusters$cluster)
+  db_to_predict <<- db_to_predict
+
+  mean_score_db_to_predict <- db_to_predict %>%
+    dplyr::group_by(target) %>%
+    dplyr::summarise(tb = mean(score))
   
-  db_to_predict %>% 
-    group_by(cluster) %>% 
-    summarise(tb = mean(score)) %>% 
-    ungroup() -> mean_cluster_db_to_predict
+  p1 <- ggplot(db_to_predict, aes_string(x = "score", color = "target", fill = "target"), environment = environment()) + 
+        geom_density(alpha = 0.3) + 
+    # geom_vline(aes(xintercept = mean_score_db_to_predict$tb[1]), linetype = "dashed", color = "red") +
+    # geom_vline(aes(xintercept = mean_score_db_to_predict$tb[2]), linetype = "dashed", color = "blue") +
+    guides(fill = "legend", colour = "none") +
+    theme(legend.position="bottom") +
+    labs(x = "collection score", y = "density", fill = "original target", color = "none", title = "Figure 1: Scorecard Distribution by two original collection targets for test data", 
+         subtitle = "The scorecard point is a numeric expression measuring collectionworthiness. \nCommercial Banks usually utilize it as a method to support the decision-making about collection actions.")
   
-  p2 <- db_to_predict %>% 
-    ggplot(aes(score, color = factor(cluster), fill = factor(cluster))) + 
+  mean_cluster_db_to_predict <- db_to_predict %>%
+    dplyr::group_by(cluster) %>%
+    dplyr::summarise(tb = mean(score))
+  
+  p2 <- ggplot(db_to_predict, aes_string(x = "score", color = "cluster", fill = "cluster"), environment = environment()) +
     geom_density(alpha = 0.3) + 
-    geom_vline(aes(xintercept = 600), linetype = "dashed", color = "black") + 
+    # geom_vline(aes(xintercept = 600), linetype = "dashed", color = "black") + 
     # geom_vline(aes(xintercept = mean_cluster_db_to_predict$tb[2]), linetype = "dashed", color = "yellow2") + 
     # geom_vline(aes(xintercept = mean_cluster_db_to_predict$tb[3]), linetype = "dashed", color = "darkorange1") + 
     # geom_vline(aes(xintercept = mean_cluster_db_to_predict$tb[4]), linetype = "dashed", color = "brown2") + 
@@ -219,9 +273,66 @@ develop_scorecard <- function(db, selected_var, desired_model, segment){
          caption = paste0("Based on data from IGB: ", segment, " | ", desired_model))
   
   both_plot <- grid.arrange(p1, p2, ncol = 1)
+  
+  # plotting both plots together
+  ggsave(paste0("Score_dist_desired_model", "_", segment,".tiff"), both_plot, units="in", width=12, height=8, 
+         path = paste0("D:/Users/sb044936/Desktop/Modelling databases R/",desired_model,"/Plots/"))
 
-  filename=paste0("D:/Users/sb044936/Desktop/Modelling databases R/",desired_model,"/Plots/Clusters_score",desired_model,"_",segment,"_",Sys.Date(),".tiff")
+  db_to_predict$cluster = as.numeric(db_to_predict$cluster)
+  geom.mean = db_to_predict %>% mutate_if(is.numeric, funs(`+1` = .+1))
+  x = geom.mean %>% dplyr::select_if(is.numeric) %>% dplyr::group_by(cluster) %>% dplyr::summarise_all(psych::geometric.mean) %>% select(ends_with("+1"))
+  x = x %>% mutate_if(is.numeric, funs(`-1` = .-1)) %>% select(ends_with("-1")) %>% arrange(`score_+1_-1`)
+  
+  names <- as.data.frame(names(x))
+  names <- str_sub(names$`names(x)`, end = -7)
+  names(x) <- names
+  
+  x$cluster = as.factor(x$cluster)
+  
+  df <- melt(x,  id.vars = c("score","cluster"), variable.name = "variable")
+  cluster_prob <- ggplot(df, aes(`score`, value)) + geom_line() + 
+    facet_wrap(variable ~ ., scales = "free_y", strip.position = "top") + 
+    geom_point(df, mapping = aes(`score`, value, color=factor(cluster), size = 5)) +
+    scale_color_manual(values=c("brown2", "darkorange1", "yellow2", "green4")) +
+    theme(legend.position="bottom") +
+    labs(title=paste0("Collection model clusters | ", desired_model, " | ", segment), x="score", y="geometric mean of selected variable", col = "cluster") +
+    guides(size = "none", colour = "legend")
+  
+  ###############################
+  #character variables (boxplot)#
+  ###############################
+  
+  var_character = db_to_predict %>% mutate_if(is.character, as.factor)
+  var_character = var_character %>% select_if(is.factor) 
+  var_character = var_character %>% select_if(~ nlevels(.) < 200) #retaining just variables with less than 28 levels
+  
+  nm <- names(var_character)
+  
+  plot_list = list()
+  for(i in seq_along(nm)){
+    p <- ggplot(db_to_predict, aes_string(x=paste0("reorder(", nm[i],", score, FUN = median)"), y="score")) +
+      geom_boxplot() + coord_flip() + labs(x = nm[i], y = "score")
+    plot_list[[i]] = p
+  }
+  
+  ##############
+  #saving plots#
+  ##############
+  
+  # Save char cluster plots to tiff. Makes a separate file for each plot.
+  for (i in seq_along(nm)) {
+    file_name = paste0("D:/Users/sb044936/Desktop/Modelling databases R/",desired_model,"/Plots/Clusters_char_",desired_model,"_",segment,"_", Sys.Date(),"_", nm[i], ".tiff")
+    tiff(file_name, units="in", width=12, height=8, res=500)
+    print(plot_list[[i]])
+    dev.off()
+  }
+  
+  # Save numeric cluster plot to tiff. Unique plot (comparing all clusters).
+  filename=paste0("D:/Users/sb044936/Desktop/Modelling databases R/",desired_model,"/Plots/Clusters_distribution_",desired_model,"_",segment,"_",Sys.Date(),".tiff")
   tiff(filename, units="in", width=12, height=8, res=500)
-  print(both_plot)
+  print(cluster_prob)
   dev.off()
+  
+  fwrite(db_to_predict, file = paste0("predictions_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
+  save(db_to_predict, file = paste0("predictions_", desired_model, "_", segment,"_", Sys.Date(),".RData"))
 }

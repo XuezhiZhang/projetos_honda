@@ -1,35 +1,90 @@
+# selecting variables that makes sense
+
+df = bhb.final %>%
+  select(-cpf_cnpj,-tabela_neg,-num_chassi,-cep_digito_cli,-cep_cli,-nome_cliente,-vlr_tx_anual_ctr,
+         -cep_loja,-vlr_tx_banco,-vlr_taxa_cliente,-cod_tabela,-nome_placa,-analista_c,
+         -data_contrato, -cod_hda, -vlr_vrg_antecipado, -vlr_vrg_diluido, -vlr_saldo_inicial,
+         -vlr_liberado, -cod_inst_financ, -cod_marca, -data_risco_contabil, -vlr_seguri_casco,
+         -vlr_tac, -data_ult_pgt, -data_vencimento, -data_nascimento_cli, -data_baixa, -cod_banco,
+         -data_ult_alt, -proposta, -cod_plano, -vlr_subs_conc, -vlr_subs_marca, -vlr_taxa_subs_conc, -vlr_desp_finan,
+         -car, -cod_pessoa, -data_ult_vencimento, -vlr_tx_subs_marc, -re, -data_ini_seguro, -data_fim_seguro,
+         -data_prim_vencimento, -nome_renavam, -`for`, -contrato_cedido, -numero_contrato_cessao,
+         -coobrigacao_sem_n, -qtd_pg_atr_em_1_ano, -valor_pg_atr_em_1_ano, -qtd_pg_atr_1_10_em_1_ano,  
+         -vlr_pg_atr_1_10_em_1_ano, -qtd_pg_atr_11_30_em_1_ano, -vlr_pg_atr_11_30_em_1_ano, -qtd_pg_atr_1_30_em_1_ano,    
+         -vlr_pg_atr_1_30_em_1_ano, -qtd_pg_atr_1_60_em_1_ano, -vlr_pg_atr_1_60_em_1_ano, -qtd_pg_atr_31_60_em_1_ano,   
+         -vlr_pg_atr_31_60_em_1_ano, -qtd_pg_atr_61_360_em_1_ano, -vlr_pg_atr_61_360_em_1_ano, -qtd_pg_atr_360_mais_em_1_ano,
+         -vlr_pg_atr_360_mais_em_1_ano, -qtd_pg_atr_11_60_em_1_ano, -vlr_pg_atr_11_60_em_1_ano, -qtd_pg_atr_1_360_em_1_ano, -vlr_pg_atr_1_360_em_1_ano) 
+
+nzv <- nearZeroVar(df)
+df <- df[,-nzv]
+
 plot.function = function(df, x, y){
 
 require(dplyr)
 require(ggplot2)
-
+require(tidyverse)
+require(caret)
+require(gridExtra)
+  
 x = sym(x)
 y = sym(y)
 
-outstanding = db %>% dplyr::filter(qtd_dias_em_atraso < 360) %>% dplyr::group_by(segmento, !! x, !! y) %>% dplyr::summarise(outstanding = dplyr::sum(qtd_itens))
-delinquents = db%>% dplyr::filter(qtd_dias_em_atraso >= 31 & qtd_dias_em_atraso <= 360) %>% dplyr::group_by(segmento, !! x, !! y) %>% dplyr::summarise(delinquents = dplyr::sum(qtd_itens), deliq_contracts = n())
+outstanding = df %>% dplyr::filter(qtd_dias_em_atraso <= 360) %>% dplyr::select(segmento, !!y, !!x) %>% na.omit() #%>% dplyr::group_by(segmento, !! x, !! y) %>% dplyr::summarise(outstanding = dplyr::sum(qtd_itens))
+outstanding = df %>% dplyr::filter(qtd_dias_em_atraso <= 360) %>% dplyr::group_by(segmento, !! x, !! y) %>% dplyr::summarise(outstanding = sum(qtd_itens, na.rm = TRUE))
+
+delinquents = df %>% dplyr::filter(qtd_dias_em_atraso >= 31 & qtd_dias_em_atraso <= 360) %>% dplyr::select(segmento, !!y, !!x) %>% na.omit() #%>% dplyr::group_by(segmento, !! x, !! y) %>% dplyr::summarise(delinquents = dplyr::sum(qtd_itens), deliq_contracts = n())
+delinquents = df %>% dplyr::filter(qtd_dias_em_atraso >= 31 & qtd_dias_em_atraso <= 360) %>% dplyr::group_by(segmento, !! x, !! y) %>% dplyr::summarise(delinquents = sum(qtd_itens, na.rm = TRUE), deliq_contracts = n())
 
 join = full_join(outstanding, delinquents)
-join = join %>% mutate(delinquency_index = delinquents/outstanding)
+join$delinquency_index = join$delinquents/join$outstanding
+join[is.na(join)] <- 0
 
-join = join %>% replace(., is.na(.), 0)
-# join = join %>% filter(idade_cli <= 100)
-# # idade_bens = idade_bens %>% filter(vlr_total_bens <= 400000)
+join$weight = join$delinquents/max(join$delinquents)
 
-#############################################################
-sp1 <- ggplot(join, aes(!!x, !!y))
-# sp +  geom_point(color = "lightgray")
+pred.points <- ggplot(data = join,
+                      aes(x = !!x,
+                          y = !!y,
+                          z = weight))
 
-pl <- sp1 + stat_density_2d(aes(fill = join$delinquency_index), geom = "polygon") + 
-      facet_wrap( ~ segmento, ncol=2) +
-      scale_fill_gradientn(colors = c("#FFEDA0", "#FEB24C", "#F03B20")) +
-      labs(title = paste0(x, " vs. ", y), caption = paste0("Source: IGB - active contracts - november 2018"))
+sp1 <- ggplot(outstanding, aes(y = !!y, x = !!x))
+
+outst_plot <- sp1 + stat_density_2d(aes(fill = stat(nlevel)), geom = "polygon") + 
+              facet_wrap( ~ segmento, ncol=2) +
+              scale_fill_gradientn(colors = c("#FFEDA0", "#FEB24C", "#F03B20")) +
+              labs(title = paste0(x, " vs. ", y), subtitle = "outstanding density", fill = "outstanding density")
+
+sp2 <- ggplot(delinquents, aes(y = !!y, x = !!x))
+
+delinq_plot <- sp2 + stat_density_2d(aes(fill = stat(nlevel)), geom = "polygon") + 
+               facet_wrap( ~ segmento, ncol=2) +
+               scale_fill_gradientn(colors = c("#FFEDA0", "#FEB24C", "#F03B20")) +
+               labs(subtitle = "delinquents density", caption = paste0("Source: IGB - active contracts - december 2018"), fill = "delinquents density")
 
       filename=paste0("D:/Users/sb044936/Desktop/Modelling databases R/Interactions/",x,"_vs_",y,"_",Sys.Date(),".tiff")
       tiff(filename, units="in", width=12, height=8, res=500)
-      print(pl)
+      
+      #generating plots together
+      gA <- ggplotGrob(outst_plot)
+      gB <- ggplotGrob(delinq_plot)
+      grid::grid.newpage()
+      grid::grid.draw(gtable_rbind(gA, gB))
+      
       dev.off()
+      
+     paste0("Plot ", x," vs ",y, " created.") %>% cat(sep = "\n")
 }
+
+names_numeric = sort(names(select_if(df, is.numeric)))
+combinations = combn(names_numeric, 2)
+
+for(i in 1:ncol(combinations)){
+    paste0(i,"/", ncol(combinations), ". ") %>% cat()
+    plot.function(df, combinations[1,i], combinations[2,i])}
+
+######################################################
+#END
+######################################################
+
 
 z = join %>% group_by(var1.bin = quantile(idade_cli, probs = seq(0, 1, 0.1), na.rm = TRUE),
                       var2.bin = quantile(vlr_renda_mensal_cli, probs = seq(0, 1, 0.1), na.rm = TRUE)) %>%
@@ -48,13 +103,7 @@ z = join %>% group_by(var1.bin = quantile(idade_cli, probs = seq(0, 1, 0.1), na.
 #############################################################
 
 # Plotting
-
-}
-
-for(i in 1:ncol(z)){
-    plot.function(db, z[1,i], z[2,i])}
-
-pl = ggplot(join, aes(idade_cli, vlr_renda_mensal_cli)) + stat_summary_2d(aes(z = delinquency_index), bins = 30, fun = mean) + 
+xpl = ggplot(join, aes(idade_cli, vlr_renda_mensal_cli)) + stat_summary_2d(aes(z = delinquency_index), bins = 30, fun = mean) + 
   scale_fill_gradientn(limits = range(join$delinquency_index), colours = c("green", "red"), guide = guide_colourbar(title = "delinquency index")) +
   facet_wrap(segmento ~ .)
 plot(pl)
@@ -149,32 +198,3 @@ ggMarginal(c, type = "density")
 d <- ggplot(idade_bens, aes(idade_cli, vlr_total_bens))
 d + stat_summary_2d(aes(z = outstanding), bins = 30) + scale_fill_gradientn(limits = range(idade_bens$outstanding), colours = c("green", "red")) + facet_wrap(segmento ~ .)
 
-
-
-
-
-
-
-
-
-
-
-db = bhb.final %>%
-  select(-cpf_cnpj,-tabela_neg,-num_chassi,-cep_digito_cli,-cep_cli,-nome_cliente,-vlr_tx_anual_ctr,
-         -cep_loja,-vlr_tx_banco,-vlr_taxa_cliente,-cod_tabela,-nome_placa,-analista_c,
-         -data_contrato, -cod_hda, -vlr_vrg_antecipado, -vlr_vrg_diluido, -vlr_saldo_inicial,
-         -vlr_liberado, -cod_inst_financ, -cod_marca, -data_risco_contabil, -vlr_seguri_casco,
-         -vlr_tac, -data_ult_pgt, -data_vencimento, -data_nascimento_cli, -data_baixa, -cod_banco,
-         -data_ult_alt, -proposta, -cod_plano, -vlr_subs_conc, -vlr_subs_marca, -vlr_taxa_subs_conc, -vlr_desp_finan,
-         -car, -cod_pessoa, -data_ult_vencimento, -vlr_tx_subs_marc, -re, -data_ini_seguro, -data_fim_seguro,
-         -data_prim_vencimento, -nome_renavam, -`for`, -contrato_cedido, -numero_contrato_cessao,
-         -coobrigacao_sem_n, -qtd_pg_atr_em_1_ano, -valor_pg_atr_em_1_ano, -qtd_pg_atr_1_10_em_1_ano,  
-         -vlr_pg_atr_1_10_em_1_ano, -qtd_pg_atr_11_30_em_1_ano, -vlr_pg_atr_11_30_em_1_ano, -qtd_pg_atr_1_30_em_1_ano,    
-         -vlr_pg_atr_1_30_em_1_ano, -qtd_pg_atr_1_60_em_1_ano, -vlr_pg_atr_1_60_em_1_ano, -qtd_pg_atr_31_60_em_1_ano,   
-         -vlr_pg_atr_31_60_em_1_ano, -qtd_pg_atr_61_360_em_1_ano, -vlr_pg_atr_61_360_em_1_ano, -qtd_pg_atr_360_mais_em_1_ano,
-         -vlr_pg_atr_360_mais_em_1_ano, -qtd_pg_atr_11_60_em_1_ano, -vlr_pg_atr_11_60_em_1_ano, -qtd_pg_atr_1_360_em_1_ano, -vlr_pg_atr_1_360_em_1_ano) 
-
-
-names_numeric = sort(names(select_if(db, is.numeric)))
-
-names <- names(bhb.fecha.numeric)

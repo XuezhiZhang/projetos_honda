@@ -16,7 +16,7 @@ mod_11_60_valid <- bhb.final %>% filter(qtd_dias_em_atraso >= 11 & qtd_dias_em_a
          -pnad_versao, -pnad_ano, -descricao_uf) %>%
   mutate(target = ifelse(
     tempo_contrato <= 1 |
-      perc_pg_atr_11_60 <= 0.75, 1, 0)) %>%
+      perc_pg_atr_11_60 <= median(perc_pg_atr_11_60), 1, 0)) %>%
   mutate(target = ifelse(is.na(target), 1, target)) %>% 
   select(-perc_pg_atr_11_60, -tempo_contrato)
 
@@ -38,7 +38,7 @@ mod_61_360_valid <- bhb.final %>% filter(qtd_dias_em_atraso >= 61 & qtd_dias_em_
          -pnad_versao, -pnad_ano, -descricao_uf) %>%
   mutate(target = ifelse(
     tempo_contrato <= 1 |
-      perc_pg_atr_61_360 <= 0.75, 1, 0)) %>%
+      perc_pg_atr_61_360 <= median(perc_pg_atr_61_360), 1, 0)) %>%
   mutate(target = ifelse(is.na(target), 1, target)) %>%
   select(-perc_pg_atr_61_360, -tempo_contrato)
 
