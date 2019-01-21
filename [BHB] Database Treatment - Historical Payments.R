@@ -1,20 +1,23 @@
 require(dplyr)
 require(ggplot2)
+require(plyr)
 
 ############################################
 #READING ALL FILES WITH HISTORICAL PAYMENTS#
 ############################################
 
 setwd("R:/Estatística/BHB/Databases BHB/Historical Payments BHB")
-load("bhb_hist_paym_sep'17_oct'18.RData")
+load("bhb_hist_paym_jan'18_dez'18.RData")
 
-# bhb.hist.paym <- list.files(pattern = "*.txt") %>%
-#   lapply(fread, stringsAsFactors=F,
-#          colClasses = c("CONT" = "character",
-#                         "N. N" = "character"), dec = ",",
-#          header = TRUE) %>%
-#   bind_rows
-a
+bhb.hist.paym <- list.files(pattern = "*.txt") %>%
+  lapply(fread, stringsAsFactors=F,
+         colClasses = c("CONT" = "character",
+                        "N. N" = "character"), dec = ",",
+         header = TRUE) %>%
+  bind_rows
+
+#save(bhb.hist.paym, file ="bhb_hist_paym_nov'17_dez'18.RData")
+
 ###############
 #TRATANDO BASE#w
 ###############
@@ -99,6 +102,7 @@ gc(); gc()
 
 save(atrasos.count.by.ctr, file = "delay_count_by_contr.RData")
 load("delay_count_by_contr.RData")
+
 ################
 #VISUALIZATIONS#
 ################
@@ -136,3 +140,26 @@ ggplot(count, aes(x=perc, fill=`MODAL.`)) + geom_density(alpha=.3) +
 fwrite(count, file = "campaign_payment_pattern.csv")
 
 rm(count, count.pay, count.pay.camp); gc();gc()
+
+#################################
+
+atrasos.count.by.ctr$`perc_pg_atr_11_60` = (atrasos.count.by.ctr$qtd_pg_atr_11_30_em_1_ano + atrasos.count.by.ctr$qtd_pg_atr_31_60_em_1_ano) / (atrasos.count.by.ctr$qtd_pg_atr_em_1_ano)
+atrasos.count.by.ctr$`perc_pg_atr_61_360` = atrasos.count.by.ctr$qtd_pg_atr_61_360_em_1_ano / atrasos.count.by.ctr$qtd_pg_atr_em_1_ano
+
+atrasos.count.by.ctr = atrasos.count.by.ctr %>% dplyr::mutate_if(is.numeric, funs(replace(., is.na(.), 0)))
+
+join = left_join(bhb.hist.paym, atrasos.count.by.ctr, by = c("CONT", "MODAL."))
+join.select = join %>% select(CONT, ATRASO, MODAL., perc_pg_atr_11_60, perc_pg_atr_61_360) %>% distinct()
+anual_median = join %>% filter(ATRASO >= 11 & ATRASO <= 60) %>% group_by(MODAL.) %>% summarise(median_11_60 = median(perc_pg_atr_11_60, na.rm = TRUE))
+
+medians = filter.11.60 %>% dplyr::group_by(MODAL.) %>% dplyr::summarise(median_perc_11_60 = median(perc_pg_atr_11_60, na.rm= TRUE))
+medians = filter.61.360 %>% dplyr::group_by(MODAL.) %>% dplyr::summarise(median_perc_61_360 = median(perc_pg_atr_61_360, na.rm= TRUE))
+
+filter.11.60 = join.select %>% filter(ATRASO >= 11 & ATRASO <= 60)
+filter.61.360 = join.select %>% filter(ATRASO >= 61 & ATRASO <= 360)
+
+ggplot(filter.61.360, aes(x=perc_pg_atr_61_360, fill = MODAL.))+
+  geom_density(alpha = 0.4)
+
+ggplot(filter.11.60, aes(x=perc_pg_atr_11_60, fill = MODAL.))+
+  geom_density(alpha = 0.4)

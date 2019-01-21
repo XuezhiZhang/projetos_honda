@@ -1,3 +1,13 @@
+require(stringr)
+require(dplyr)
+require(broom)
+require(scorecard)
+require(caret)
+require(foreach)
+require(glmnet)
+require(gridExtra)
+require(tibble)
+
 mod_11_60_valid <- bhb.final %>% filter(qtd_dias_em_atraso >= 11 & qtd_dias_em_atraso <= 60) %>%
   select(-cpf_cnpj,-tabela_neg,-num_chassi,-cep_digito_cli,-cep_cli,-nome_cliente,-vlr_tx_anual_ctr,
          -cep_loja,-vlr_tx_banco,-vlr_taxa_cliente,-cod_tabela,-nome_placa,-analista_c,
@@ -47,124 +57,189 @@ mod_61_360_4W_valid = mod_61_360_valid %>% filter(segmento == "CAR")
 
 ########################################
 
-setwd("D:/Users/sb044936/Desktop/Modelling databases R/11_60/Models")
-load("lasso_model_11_60_MOT_2018-12-13.RData")
-setwd("D:/Users/sb044936/Desktop/Modelling databases R/11_60/Databases")
-load("bins_mod_11_60_MOT.RData")
+setwd("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Models")
+load("lasso_model_61_360_MOT_2019-01-16(no-overfitted).RData")
+setwd("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Databases")
+load("bins_mod_61_360_MOT.RData")
+setwd("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Predictions")
+load("selected_var_61_360_MOT_2019-01-16(no-overfitted).RData")
 
-db_to_predict = mod_11_60_valid %>% filter(segmento == "MOT")
+db_to_predict = mod_61_360 %>% filter(segmento == "MOT")
 
-zerovar = nearZeroVar(db_to_predict, uniqueCut = 0, foreach = TRUE, allowParallel = TRUE)
-db_to_predict = db_to_predict[,-zerovar]
+#WOE
+# db_woe_bin = woebin(select(db_to_predict, -cod_contrato), y = "target")
+db_woe = woebin_ply(db_to_predict, bins_mod)
 
-preproc = preProcess(select(db_to_predict, -target), method = "bagImpute", k = 5)
+registerDoSEQ()
+zerovar = nearZeroVar(db_woe, uniqueCut = 0, foreach = TRUE, allowParallel = TRUE)
+db_to_predict = db_woe %>% select(-zerovar)
+
+preproc = preProcess(db_to_predict, method = "knnImpute", k = 5)
 db_to_predict <- predict(preproc, db_to_predict)
 
 db_to_predict$target = factor(db_to_predict$target)
 
-#WOE
-db_woe_bin = woebin(select(db_to_predict, -cod_contrato), y = "target")
-db_woe = woebin_ply(db_to_predict, db_woe_bin)
+db_to_predict_matrix = as.matrix(select(db_to_predict, -c(cod_contrato, target, perc_pg_atr_61_360)))
 
 "Starting step 4: Predictions and model performance measures.\n\n" %>% cat()
 # Predicting model in test database
 # probabilities <- glm.model %>% predict(test_db_woe, type="response")
-probabilities = predict(glm.model, newdata = db_woe, type="response")
-
+probabilities = predict(lasso.model, newx = db_to_predict_matrix, type="response")
+                        
 # Checking probabilities x target in test database
-pred <- prediction(probabilities, db_woe$target)
+pred <- prediction(probabilities, db_to_predict$target)
 acc.perf = performance(pred, "sens", "spec")
 
 # Find probabilities cutoff with greater sum of specificity and sensitivity
 cutoff <<- acc.perf@alpha.values[[1]][which.max(acc.perf@x.values[[1]]+acc.perf@y.values[[1]])]
 
-predicted.classes <- ifelse(probabilities > cutoff, 1, 0)
+predicted.classes <- c(ifelse(probabilities > cutoff, 1, 0))
 observed.classes <- db_woe$target
 
 # Calculating KS, auc, gini
-evaluation <- perf_eva(observed.classes, c(predicted.classes), show_plot = TRUE)
+evaluation <- scorecard::perf_eva(label = observed.classes, pred = probabilities, show_plot = TRUE)
+df <- melt(data.frame(evaluation$binomial_metric$dat))
+names(df) <- c("Statistic", "Value")
+
+selected_var = coefs <- tidy(lasso.model)
+coefs <- coefs[-1,]
+selected_var_woe = paste(coefs$term, sep = "\n"); selected_var_woe <<- c(selected_var_woe, "target")
+selected_var = str_sub(coefs$term, end = -5); selected_var <<- c("cod_contrato", selected_var, "target")
 
 # Creating dataframe with probabilities
-probs_by_contract <<- data.frame(select(db_to_predict, selected_var), bad_payer_prob = c(probabilities), predicted_target = predicted.classes)
+db_to_predict = mod_61_360 %>% filter(segmento == "MOT")
 
-"Step 4: Predictions and model performance measures done.\n\n" %>% cat()
-# Results printing on console
-paste0("Results from lasso model for", " ", names(cv.lasso)[10],".\n\n") %>% cat()
+probs_by_contract <<- data.frame(dplyr::select(db_to_predict, selected_var), bad_payer_prob = c(probabilities), predicted_target = predicted.classes)
+
 paste0("The cutoff probability point that produces greater sensibility+specificity: ", round(cutoff,4), "\n\n") %>% cat()
 
-print(summary(glm.model))
-"######################################################\n\n" %>% cat()
-print(imp)
+conf.matrix = caret::confusionMatrix(as.factor(observed.classes), as.factor(predicted.classes))
+
+print(summary(lasso.model))
 "######################################################\n\n" %>% cat()
 print(evaluation)
 "######################################################\n\n" %>% cat()
-print(caret::confusionMatrix(as.factor(observed.classes), as.factor(predicted.classes)))
+print(conf.matrix)
 "######################################################\n\n" %>% cat()
+
+db_to_predict$target = as.factor(db_to_predict$target)
 
 points0 = 600
 odds0 = 50
 pdo = 20
 
-card <<- scorecard(bins_mod, model, 
-                   points0 = points0, 
-                   odds0 = 1/odds0, 
-                   pdo = pdo)
+pred = predict(lasso.model, newx = db_to_predict_matrix)
+resp = predict(lasso.model, newx = db_to_predict_matrix, type = "response")
 
-sc = scorecard_ply(db_to_predict, card, only_total_score = FALSE)
+factor = pdo/log(2)
+offset = points0 - factor * log(odds0)
 
-final_scorecard <<- bind_rows(card) %>% select(-count, -count_distr, -good, -bad, -is_special_values, -breaks)
+final_db = db_to_predict %>% mutate(logit = c(pred),
+                                    odds = c(exp(pred)),
+                                    prob_bad = c(odds/(odds + 1)),
+                                    prob_good =  c(1 - (odds/(odds + 1))),
+                                    prob_ctrl = c(resp))
 
-db_to_predict <<- data.frame(db_to_predict, sc)
+final_db$score_ctrl = offset - (factor*final_db$logit)
+final_db$score = round(final_db$prob_good * 1000,0)
 
-db_to_predict %>% 
+score_metrics = c("logit", "odds", "prob_good", "prob_bad", "prob_ctrl", "score_ctrl", "score")
+#########################
+
+final_db %>% 
   group_by(target) %>% 
   summarise(tb = mean(score)) %>% 
   ungroup() -> mean_score_db_to_predict
 
-p1 <- db_to_predict %>% 
+final_db$target = as.factor(final_db$target)
+final_db$target <- revalue(final_db$target, c("0"="good payer", "1"="bad payer"))
+
+mean_score_db_to_predict <- final_db %>%
+  dplyr::group_by(target) %>%
+  dplyr::summarise(tb = mean(score))
+
+p1 <- final_db %>% 
   ggplot(aes(score, color = factor(target), fill = factor(target))) + 
   geom_density(alpha = 0.3) + 
-  geom_vline(aes(xintercept = mean_score_db_to_predict$tb[1]), linetype = "dashed", color = "red") + 
-  geom_vline(aes(xintercept = mean_score_db_to_predict$tb[2]), linetype = "dashed", color = "blue") + 
+  geom_vline(aes(xintercept = mean_score_db_to_predict$tb[1]), linetype = "dashed", color = "green4") +
+  geom_vline(aes(xintercept = mean_score_db_to_predict$tb[2]), linetype = "dashed", color = "brown2") +
+  scale_color_manual(values=c("green4", "brown2")) +
+  scale_fill_manual(values=c("green4", "brown2")) +
   guides(fill = "legend", colour = "none") +
   theme(legend.position="bottom") +
-  labs(x = "collection score", y = "density", fill = "original target", color = "none", title = "Figure 1: Scorecard Distribution by two original collection targets for test data", 
+  labs(x = "collection score", y = "density", fill = "original target", color = "none", title = "Figure 1: Scorecard Distribution by two original collection targets for validation data", 
        subtitle = "The scorecard point is a numeric expression measuring collectionworthiness. \nCommercial Banks usually utilize it as a method to support the decision-making about collection actions.")
 
 set.seed(123)
-centers <- stats::kmeans(db_to_predict$score, centers = 4, iter.max = 500, nstart = 100)$centers
+centers <- stats::kmeans(final_db$score, centers = 4, iter.max = 500, nstart = 100)$centers
 centers <- sort(centers)
 set.seed(123)
-clusters <- kmeans(db_to_predict$score, centers = centers, iter.max = 500, nstart = 100)
-db_to_predict$cluster = clusters$cluster
+clusters <- kmeans(final_db$score, centers = centers, iter.max = 500, nstart = 100)
+final_db$cluster = as.factor(clusters$cluster)
 
-db_to_predict %>% 
-  group_by(cluster) %>% 
-  summarise(tb = mean(score)) %>% 
-  ungroup() -> mean_cluster_db_to_predict
+final_db$cluster = revalue(final_db$cluster, c("1"="very high risk", "2"="high risk", "3"="low risk", "4"="very low risk"))
 
-p2 <- db_to_predict %>% 
+mean_cluster_db_to_predict <- final_db %>% 
+  dplyr::group_by(cluster) %>% 
+  dplyr::summarise(tb = mean(score)) 
+
+p2 <- final_db %>% 
   ggplot(aes(score, color = factor(cluster), fill = factor(cluster))) + 
   geom_density(alpha = 0.3) + 
-  geom_vline(aes(xintercept = 600), linetype = "dashed", color = "black") + 
-  # geom_vline(aes(xintercept = mean_cluster_db_to_predict$tb[2]), linetype = "dashed", color = "yellow2") + 
-  # geom_vline(aes(xintercept = mean_cluster_db_to_predict$tb[3]), linetype = "dashed", color = "darkorange1") + 
-  # geom_vline(aes(xintercept = mean_cluster_db_to_predict$tb[4]), linetype = "dashed", color = "brown2") + 
+  geom_vline(aes(xintercept = mean_cluster_db_to_predict$tb[1]), linetype = "dashed", color = "brown2") +
+  geom_vline(aes(xintercept = mean_cluster_db_to_predict$tb[2]), linetype = "dashed", color = "darkorange1") +
+  geom_vline(aes(xintercept = mean_cluster_db_to_predict$tb[3]), linetype = "dashed", color = "yellow2") +
+  geom_vline(aes(xintercept = mean_cluster_db_to_predict$tb[4]), linetype = "dashed", color = "green4") +
   guides(fill = "legend", colour = "none") +
   scale_color_manual(values=c("brown2", "darkorange1", "yellow2", "green4")) +
   scale_fill_manual(values=c("brown2", "darkorange1", "yellow2", "green4")) +
   theme(legend.position="bottom") +
-  labs(x = "collection score", y = "density", fill = "cluster", color = "none", title = "Figure 2: Scorecard Distribution by four collection clusters for test data")#,
-       #caption = paste0("Based on data from IGB: ", segment, " | ", desired_model))
+  labs(x = "collection score", y = "density", fill = "cluster", color = "none", title = "Figure 2: Scorecard Distribution by four collection clusters for validation data",
+       caption = paste0("Based on data from IGB: ", segment, " | ", desired_model))
 
 both_plot <- grid.arrange(p1, p2, ncol = 1)
 
-filename=paste0("D:/Users/sb044936/Desktop/Modelling databases R/",desired_model,"/Plots/Clusters_score",desired_model,"_",segment,"_",Sys.Date(),".tiff")
+db_to_predict = final_db %>% select(c(selected_var, cluster, score))
+db_to_predict$cluster = as.numeric(db_to_predict$cluster)
+geom.mean = db_to_predict %>% mutate_if(is.numeric, funs(`+1` = .+1))
+x = geom.mean %>% dplyr::select_if(is.numeric) %>% dplyr::group_by(cluster) %>% dplyr::summarise_all(psych::geometric.mean) %>% select(ends_with("+1"))
+x = x %>% mutate_if(is.numeric, funs(`-1` = .-1)) %>% select(ends_with("-1")) %>% arrange(`score_+1_-1`)
+
+names <- as.data.frame(names(x))
+names <- str_sub(names$`names(x)`, end = -7)
+names(x) <- names
+
+x$cluster = as.factor(x$cluster)
+x$cluster = revalue(x$cluster, c("1"="very high risk", "2"="high risk", "3"="low risk", "4"="very low risk"))
+
+df2 <- melt(x,  id.vars = c("score","cluster"), variable.name = "variable")
+cluster_prob <- ggplot(df2, aes(`score`, value)) + geom_line() + 
+  facet_wrap(variable ~ ., scales = "free_y", strip.position = "top") + 
+  geom_point(df2, mapping = aes(`score`, value, color=factor(cluster), size = 5)) +
+  scale_color_manual(values=c("brown2", "darkorange1", "yellow2", "green4")) +
+  theme(legend.position="bottom") +
+  labs(title=paste0("Collection model clusters | ", desired_model, " | ", segment), x="collection score", y="geometric mean of selected variable", col = "cluster",
+       caption = paste0("Based on data from IGB: ", segment, " | ", desired_model)) +
+  guides(size = "none", colour = "legend")
+
+#####################################
+
+# plotting both plots together
+ggsave(paste0("Score_dist_desired_model_validation", "_", segment,"_", Sys.Date(),".tiff"), both_plot, units="in", width=12, height=8, 
+       path = paste0("D:/Users/sb044936/Desktop/Modelling databases R/",desired_model,"/Plots/"))
+
+filename=paste0("D:/Users/sb044936/Desktop/Modelling databases R/",desired_model,"/Plots/Clusters_distribution_validation_",desired_model,"_",segment,"_",Sys.Date(),".tiff")
 tiff(filename, units="in", width=12, height=8, res=500)
-print(both_plot)
+print(cluster_prob)
 dev.off()
 
+conf_db = as.data.frame(as.matrix(conf.matrix, what = "overall")); conf_db = rownames_to_column(conf_db, "Statistic")
+conf_db2 = as.data.frame(as.matrix(conf.matrix, what = "classes")); conf_db2 = rownames_to_column(conf_db2, "Statistic")
+conf = bind_rows(conf_db, conf_db2); colnames(conf) <- c("Statistic", "Value"); conf$Value = round(conf$Value, 4)
+perf_stats1 = bind_rows(conf, df)
+perf_stats2 = as.data.frame(conf.matrix$table)
 
-
-
+setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/", desired_model, "/Predictions"))
+fwrite(perf_stats1, file = paste0("performance_stats_1_valid_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
+fwrite(perf_stats2, file = paste0("performance_stats_2_valid_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
 

@@ -9,7 +9,7 @@ load("bhb_final.RData")
 
 #splitting final database in 11_60 / 61_360 - selecting candidate variables
 
-mod_11_60 <- subset(bhb.final, qtd_dias_em_atraso >= 11 & qtd_dias_em_atraso <= 60,
+mod_11_60_valid <- subset(bhb.fecha.valid, qtd_dias_em_atraso >= 11 & qtd_dias_em_atraso <= 60,
                     select = c(-cpf_cnpj,-tabela_neg,-num_chassi,-cep_digito_cli,-cep_cli,-nome_cliente,-vlr_tx_anual_ctr,
                                -cep_loja,-vlr_tx_banco,-vlr_taxa_cliente,-cod_tabela,-nome_placa,-analista_c,
                                -data_contrato, -cod_hda, -vlr_vrg_antecipado, -vlr_vrg_diluido, -vlr_saldo_inicial,
@@ -26,9 +26,9 @@ mod_11_60 <- subset(bhb.final, qtd_dias_em_atraso >= 11 & qtd_dias_em_atraso <= 
                                -perc_pg_atr_1_60, -perc_pg_atr_61_360, -perc_pg_atr_1_10, -perc_pg_atr_360_mais, -vlr_seg_gara_estend, -status_contrato, -qtd_parcelas_pagas, -score,
                                -pnad_versao, -pnad_ano, -descricao_uf))
 
-mod_11_60$perc_pg_atr_11_60 = replace(mod_11_60$perc_pg_atr_11_60, is.na(mod_11_60$perc_pg_atr_11_60), 0)
+mod_11_60_valid$perc_pg_atr_11_60 = replace(mod_11_60_valid$perc_pg_atr_11_60, is.na(mod_11_60_valid$perc_pg_atr_11_60), 0)
 
-mod_61_360 <- subset(bhb.final, qtd_dias_em_atraso >= 61 & qtd_dias_em_atraso <= 360, 
+mod_61_360_valid <- subset(bhb.fecha.valid, qtd_dias_em_atraso >= 61 & qtd_dias_em_atraso <= 360, 
                      select = c(-cpf_cnpj,-tabela_neg,-num_chassi,-cep_digito_cli,-cep_cli,-nome_cliente,-vlr_tx_anual_ctr,
                                 -cep_loja,-vlr_tx_banco,-vlr_taxa_cliente,-cod_tabela,-nome_placa,-analista_c,
                                 -data_contrato, -cod_hda, -vlr_vrg_antecipado, -vlr_vrg_diluido, -vlr_saldo_inicial,
@@ -45,7 +45,7 @@ mod_61_360 <- subset(bhb.final, qtd_dias_em_atraso >= 61 & qtd_dias_em_atraso <=
                                 -perc_pg_atr_1_60, -perc_pg_atr_11_60, -perc_pg_atr_1_10, -perc_pg_atr_360_mais, -vlr_seg_gara_estend, -status_contrato, -qtd_parcelas_pagas, -score,
                                 -pnad_versao, -pnad_ano, -descricao_uf))
 
-mod_61_360$perc_pg_atr_61_360 = replace(mod_61_360$perc_pg_atr_61_360, is.na(mod_61_360$perc_pg_atr_61_360), 0)
+mod_61_360_valid$perc_pg_atr_61_360 = replace(mod_61_360_valid$perc_pg_atr_61_360, is.na(mod_61_360_valid$perc_pg_atr_61_360), 0)
 
 ###################################
 #PROCESS TO CREATE TARGET VARIABLE#
@@ -70,10 +70,10 @@ teste = function(base, segment){
   }
   return(output.df)}
 
-output_11_60_car = teste(mod_11_60, "CAR")
-output_11_60_mot = teste(mod_11_60, "MOT")
-output_61_360_car = teste(mod_61_360, "CAR")
-output_61_360_mot = teste(mod_61_360, "MOT")
+output_11_60_car = teste(mod_11_60_valid, "CAR")
+output_11_60_mot = teste(mod_11_60_valid, "MOT")
+output_61_360_car = teste(mod_61_360_valid, "CAR")
+output_61_360_mot = teste(mod_61_360_valid, "MOT")
 
 medians = mod_11_60 %>% dplyr::group_by(segmento) %>% dplyr::summarise(median_perc_11_60 = median(perc_pg_atr_11_60, na.rm= TRUE))
 ggplot(mod_11_60,aes(x=perc_pg_atr_11_60, fill = segmento))+
@@ -90,52 +90,47 @@ ggplot(mod_61_360,aes(x=perc_pg_atr_61_360, fill = segmento))+
 filter_out = output_11_60_car %>% filter(perc >= 0.2 & perc <= 0.8)
 cutoff = filter_out$perc[which.min(abs(0.5-filter_out$bad_dist))]
 
-mod_11_60.car = mod_11_60 %>% filter(segmento == "CAR") %>%
+mod_11_60.car = mod_11_60_valid %>% filter(segmento == "CAR") %>%
                               mutate(target = ifelse(tempo_contrato_meses <= 6 |
                                                      perc_pg_atr_11_60 <= cutoff, 1, 0)) 
 
 filter_out = output_11_60_mot %>% filter(perc >= 0.2 & perc <= 0.8)
 cutoff = filter_out$perc[which.min(abs(0.5-filter_out$bad_dist))]
 
-mod_11_60.mot = mod_11_60 %>% filter(segmento == "MOT") %>%
+mod_11_60.mot = mod_11_60_valid %>% filter(segmento == "MOT") %>%
                               mutate(target = ifelse(tempo_contrato_meses <= 6 |
                                                      perc_pg_atr_11_60 <= cutoff, 1, 0)) 
 
-mod_11_60 = bind_rows(mod_11_60.car, mod_11_60.mot)
+mod_11_60_valid = bind_rows(mod_11_60.car, mod_11_60.mot)
 
 filter_out = output_61_360_car %>% filter(perc >= 0.2 & perc <= 0.8)
 cutoff = filter_out$perc[which.min(abs(0.5-filter_out$bad_dist))]
 
-mod_61_360.car = mod_61_360 %>% filter(segmento == "CAR") %>%
+mod_61_360.car = mod_61_360_valid %>% filter(segmento == "CAR") %>%
                                        mutate(target = ifelse(tempo_contrato_meses <= 6 |
                                                               perc_pg_atr_61_360 <= cutoff, 1, 0)) 
 
 filter_out = output_61_360_mot %>% filter(perc >= 0.2 & perc <= 0.8)
 cutoff = filter_out$perc[which.min(abs(0.5-filter_out$bad_dist))]
 
-mod_61_360.mot = mod_61_360 %>% filter(segmento == "MOT") %>%
+mod_61_360.mot = mod_61_360_valid %>% filter(segmento == "MOT") %>%
                                        mutate(target = ifelse(tempo_contrato_meses <= 6 |
                                                               perc_pg_atr_61_360 <= cutoff, 1, 0)) 
 
 
-mod_61_360 = bind_rows(mod_61_360.car, mod_61_360.mot)
+mod_61_360_valid = bind_rows(mod_61_360.car, mod_61_360.mot)
 
-# mod_11_60 = mod_11_60 %>% select(-c(tempo_contrato_meses, tempo_contrato_anos, perc_pg_atr_11_60))
-# mod_61_360 = mod_61_360 %>% select(-c(tempo_contrato_meses, tempo_contrato_anos, perc_pg_atr_61_360))
+mod_11_60 = mod_11_60 %>% select(-c(tempo_contrato_meses, tempo_contrato_anos, perc_pg_atr_11_60))
+mod_61_360 = mod_61_360 %>% select(-c(tempo_contrato_meses, tempo_contrato_anos, perc_pg_atr_61_360))
 
 setwd("D:/Users/sb044936/Desktop/Modelling databases R/11_60/Databases")
 save(mod_11_60, file = "mod_11_60.RData")
-load("mod_11_60.RData")
 setwd("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Databases")
 save(mod_61_360, file = "mod_61_360.RData")
-load("mod_61_360.RData")
 
 ##################################
 
 setwd("D:/Users/sb044936/Desktop/Modelling databases R/11_60/Databases")
-save(mod_11_60, file = "mod_11_60_valid.RData")
-load("mod_11_60_valid.RData")
-
+save(mod_11_60_valid, file = "mod_11_60_valid.RData")
 setwd("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Databases")
-save(mod_61_360, file = "mod_61_360_valid.RData")
-load("mod_61_360_valid.RData")
+save(mod_61_360_valid, file = "mod_61_360_valid.RData")

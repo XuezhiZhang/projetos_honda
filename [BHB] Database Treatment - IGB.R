@@ -36,9 +36,9 @@ bhb.fecha.ago.18 <- fread("bhbigbfin_0747290000.txt", header = TRUE, dec = ",", 
                                                                                                "Cep" = "character",
                                                                                                "Cep l" = "character",
                                                                                                "CPF CNPJ" = "character"))
-bhb.fecha.nov.13.18 <- fread("bhbigbfin_0630010000.txt", header = TRUE, dec = ",", check.names = TRUE, colClasses = c("Contrato" = "character",
-                                                                                                                      #"Cep" = "character",
-                                                                                                                      #"Cep l" = "character",
+bhb.fecha.valid <- fread("bhbigbfin_1947220000.txt", header = TRUE, dec = ",", check.names = TRUE, colClasses = c("Contrato" = "character",
+                                                                                                                      "Cep" = "character",
+                                                                                                                      "Cep l" = "character",
                                                                                                                       "CPF CNPJ" = "character"))
 
 
@@ -57,12 +57,18 @@ bhb.fecha <- list.files(pattern = "*.txt") %>%
 save(bhb.fecha.dez.18, file = "bhb_fecha_dez_18.RData")
 save(bhb.fecha.nov.18, file = "bhb_fecha_nov_18.RData")
 save(bhb.fecha.oct.18, file = "bhb_fecha_oct_18.RData")
+bhb.final = bind_rows(bhb.fecha.oct.18, bhb.fecha.nov.18); rm(bhb.fecha.oct.18, bhb.fecha.nov.18)
+bhb.final = bind_rows(bhb.final, bhb.fecha.dez.18); rm(bhb.fecha.dez.18)
 save(bhb.final, file = "bhb_final.RData")
 load("bhb_final.RData")
 
+load("bhb_fecha_dez_18.RData")
+load("bhb_fecha_nov_18.RData")
+load("bhb_fecha_oct_18.RData")
+
 load("bhb_fecha.RData") #OCT, NOV, DEC
 
-bhb.fecha.dez.18 = bhb.fecha.dez.18 %>%
+bhb.fecha.valid = bhb.fecha.valid %>%
   dplyr::rename("cod_contrato" = "Contrato",
                 "data_contrato" = "Data.Ctr",
                 "tipo_pessoa" = "T",
@@ -163,42 +169,45 @@ bhb.fecha.dez.18 = bhb.fecha.dez.18 %>%
                 "qtd_parc_pagas" = "Qtd.p.1") %>% 
                 select(-DDD, -DDD.1, -Qtd.1)
 
-bhb.fecha.dez.18 = bhb.fecha.dez.18 %>% subset(qtd_parc_restantes > 0)
+bhb.fecha.valid = bhb.fecha.valid %>% subset(qtd_parc_restantes > 0)
 
 setwd("~/IGB")
 # save(bhb.fecha, file = "bhb_fecha_ago_oct_18.RData")
 load("bhb_fecha_ago_oct_18.RData")
 
 #turning all variable that starts with "data_" as a date format
-bhb.fecha.t = bhb.fecha %>% select(starts_with("data_"))
-bhb.fecha.dez.18 = bhb.fecha.dez.18 %>% dplyr::mutate_at(dplyr::vars(dplyr::starts_with("data_")), funs(as.Date(as.character(.), format = "%d/%m/%Y")))
+bhb.fecha.valid = bhb.fecha.valid %>% dplyr::mutate_at(dplyr::vars(dplyr::starts_with("data_")), funs(as.Date(as.character(.), format = "%d/%m/%Y")))
 
 #JOINING DATABASES: PAYMENTS & FECHAMENTO
 
 names(atrasos.count.by.ctr)[1] = "cod_contrato"
-bhb.fecha.dez.18 <- left_join(bhb.fecha.dez.18, atrasos.count.by.ctr); bhb.fecha.dez.18 = bhb.fecha.dez.18 %>% select(-MODAL.)
+bhb.final <- left_join(bhb.fecha.valid, atrasos.count.by.ctr); bhb.fecha.valid = bhb.fecha.valid %>% select(-MODAL.)
 
 #STANDARDIZING DATABASE & CREATING NEW VARIABLES FOR MODELLING
 
-bhb.fecha.dez.18$vlr_renda_mensal_cli = ifelse(bhb.fecha.dez.18$vlr_renda_mensal_cli == 1, NA, 
-                                        bhb.fecha.dez.18$vlr_renda_mensal_cli) 
+bhb.final$vlr_renda_mensal_cli = ifelse(bhb.final$vlr_renda_mensal_cli == 1, NA, 
+                                        bhb.final$vlr_renda_mensal_cli) 
 
-bhb.fecha.dez.18$`idade_cli` =  as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.fecha.dez.18$data_nascimento), "years"))
-bhb.fecha.dez.18$`tempo_contrato` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.fecha.dez.18$data_contrato), "years"))
-bhb.fecha.dez.18$`tempo_desde_ult_pgt` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.fecha.dez.18$data_ult_pgt), "days"))
+bhb.final$`idade_cli` =  as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.final$data_nascimento), "years"))
+bhb.final$`tempo_contrato_anos` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.final$data_contrato), "years"))
+bhb.final$`tempo_contrato_meses` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.final$data_contrato), "months"))
+bhb.final$`tempo_desde_ult_pgt` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.final$data_ult_pgt), "days"))
 
-bhb.fecha.dez.18$`perc_parc_pagas` = bhb.fecha.dez.18$qtd_parc_pagas / (bhb.fecha.dez.18$qtd_parc_pagas + bhb.fecha.dez.18$qtd_parc_restantes)
-bhb.fecha.dez.18$`perc_vnc_finan` = bhb.fecha.dez.18$vlr_vencido / bhb.fecha.dez.18$vlr_total_financiado
-bhb.fecha.dez.18$`perc_vnc_renda` = bhb.fecha.dez.18$vlr_vencido / bhb.fecha.dez.18$vlr_renda_mensal
-bhb.fecha.dez.18$`perc_vnc_bens` = bhb.fecha.dez.18$vlr_vencido / bhb.fecha.dez.18$vlr_total_bens
-bhb.fecha.dez.18$`perc_ult_pgt_parc` = bhb.fecha.dez.18$vlr_ult_pgt / bhb.fecha.dez.18$vlr_parcela
-bhb.fecha.dez.18$`perc_a_vencer_finan` = bhb.fecha.dez.18$vlr_a_vencer / bhb.fecha.dez.18$vlr_total_financiado
+bhb.final$`perc_parc_pagas` = bhb.final$qtd_parc_pagas / (bhb.final$qtd_parc_pagas + bhb.final$qtd_parc_restantes)
+bhb.final$`perc_vnc_finan` = bhb.final$vlr_vencido / bhb.final$vlr_total_financiado
+bhb.final$`perc_vnc_renda` = bhb.final$vlr_vencido / bhb.final$vlr_renda_mensal
+bhb.final$`perc_vnc_bens` = bhb.final$vlr_vencido / bhb.final$vlr_total_bens
+bhb.final$`perc_ult_pgt_parc` = bhb.final$vlr_ult_pgt / bhb.final$vlr_parcela
+bhb.final$`perc_a_vencer_finan` = bhb.final$vlr_a_vencer / bhb.final$vlr_total_financiado
 
-bhb.fecha.dez.18$`perc_pg_atr_1_10` = bhb.fecha.dez.18$qtd_pg_atr_1_10_em_1_ano / bhb.fecha.dez.18$qtd_pg_atr_em_1_ano
-bhb.fecha.dez.18$`perc_pg_atr_1_60` = bhb.fecha.dez.18$qtd_pg_atr_1_60_em_1_ano / bhb.fecha.dez.18$qtd_pg_atr_em_1_ano
-bhb.fecha.dez.18$`perc_pg_atr_11_60` = (bhb.fecha.dez.18$qtd_pg_atr_11_30_em_1_ano + bhb.fecha.dez.18$qtd_pg_atr_31_60_em_1_ano) / (bhb.fecha.dez.18$qtd_pg_atr_em_1_ano)
-bhb.fecha.dez.18$`perc_pg_atr_61_360` = bhb.fecha.dez.18$qtd_pg_atr_61_360_em_1_ano / bhb.fecha.dez.18$qtd_pg_atr_em_1_ano
-bhb.fecha.dez.18$`perc_pg_atr_360_mais` = bhb.fecha.dez.18$qtd_pg_atr_360_mais_em_1_ano/ bhb.fecha.dez.18$qtd_pg_atr_em_1_ano
+bhb.final$`perc_pg_atr_1_10` = bhb.final$qtd_pg_atr_1_10_em_1_ano / bhb.final$qtd_pg_atr_em_1_ano
+bhb.final$`perc_pg_atr_1_60` = bhb.final$qtd_pg_atr_1_60_em_1_ano / bhb.final$qtd_pg_atr_em_1_ano
+bhb.final$`perc_pg_atr_11_60` = (bhb.final$qtd_pg_atr_11_30_em_1_ano + bhb.final$qtd_pg_atr_31_60_em_1_ano) / (bhb.final$qtd_pg_atr_em_1_ano)
+bhb.final$`perc_pg_atr_61_360` = bhb.final$qtd_pg_atr_61_360_em_1_ano / bhb.final$qtd_pg_atr_em_1_ano
+bhb.final$`perc_pg_atr_360_mais` = bhb.final$qtd_pg_atr_360_mais_em_1_ano/ bhb.final$qtd_pg_atr_em_1_ano
+
+bhb.final$`perc_parc_renda` = bhb.final$vlr_parcela/bhb.final$vlr_renda_mensal_cli
+bhb.final$`perc_pg_finan` = (bhb.final$vlr_parcela*bhb.final$qtd_parc_pagas)/bhb.final$vlr_total_financiado
 
 #AGGREGATING OTHER DATABASES
 setwd("R:/Estatística/BHB/Databases BHB/Another fonts BHB")
@@ -206,12 +215,12 @@ ibge = fread("indicadores_pnad_uf.txt",  header = TRUE, dec = ",") %>% filter(pn
 ibge = ibge %>% dplyr::rename("nome_estado_cli" = "uf")
 
 #adding to bhb.fecha ibge database
-bhb.fecha.dez.18 = left_join(bhb.fecha.dez.18, ibge, by = "nome_estado_cli")
+bhb.final = left_join(bhb.final, ibge, by = "nome_estado_cli")
 rm(ibge); gc();gc()
 
 #adding cc (cilindradas) database
 cc = fread("de_para_cc.txt",  header = TRUE)
-bhb.fecha.dez.18 = left_join(bhb.fecha.dez.18, cc, by = "modelo")
+bhb.final = left_join(bhb.final, cc, by = "modelo")
 
 #########################
 #CLEANING CORE DATABASES#
@@ -222,14 +231,13 @@ rm(bhb.fecha, atrasos.count.by.ctr, cc); gc(); gc()
 # SUBSTITUTE ALL NUMERIC MISSING DATA WITH 0
 # bhb.fecha = bhb.fecha %>% 
 #                    mutate_at(vars(starts_with("vlr_")), funs(replace(., is.na(.), 0)))
-mod_61_360 = mod_61_360 %>% mutate_if(is.numeric, funs(replace(., is.infinite(.), NA))) %>%
-                            mutate_if(is.numeric, funs(replace(., is.nan(.), NA)))
+bhb.final = bhb.final %>% mutate_if(is.numeric, funs(replace(., is.infinite(.), NA))) %>%
+                          mutate_if(is.numeric, funs(replace(., is.nan(.), NA)))
 
-names(bhb.fecha.dez.18) <- gsub("/", "_", names(bhb.fecha.dez.18), fixed = TRUE)
-names(bhb.fecha.dez.18) <- gsub(".", "_", names(bhb.fecha.dez.18), fixed = TRUE)
+names(bhb.final) <- gsub("/", "_", names(bhb.final), fixed = TRUE)
+names(bhb.final) <- gsub(".", "_", names(bhb.final), fixed = TRUE)
 
-setwd("R:/Estatística/BHB/Databases BHB")
-#save(bhb.final, file = "bhb_final.RData") AUG/SEP/OCT
+save(bhb.final, file = "bhb_final.RData") #OCT/NOV/DEC
 load("bhb_final.RData")
 
 view.brain = bhb.fecha %>% filter(qtd_pg_atr_em_1_ano > 0) %>% select(cod_contrato, qtd_pg_atr_1_10_em_1_ano, qtd_pg_atr_11_60_em_1_ano, qtd_pg_atr_61_360_em_1_ano, qtd_pg_atr_360_mais_em_1_ano, qtd_pg_atr_em_1_ano, perc_pg_atr_1_10, perc_pg_atr_11_60, perc_pg_atr_61_360, perc_pg_atr_360_mais)
@@ -239,3 +247,8 @@ deps <- tools::package_dependencies("dplyr")$dplyr
 install.packages(deps)
 
 x = data.frame(lapply(bhb.fecha.t, as.Date, format = "%d/%m/%Y"))
+
+###############################################
+
+save(bhb.fecha.valid, file = "bhb_fecha_valid.RData")
+load("bhb_fecha_valid.RData")
