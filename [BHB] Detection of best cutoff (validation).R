@@ -1,15 +1,15 @@
 require(dplyr)
 require(data.table)
-setwd("D:/Users/sb044936/Documents/IGB/Backup")
-valid = fread("bhbigbfin_1947220000.txt", header = TRUE, dec = ",", check.names = TRUE, colClasses = c("Contrato" = "character",
-                                                                                                       "Cep" = "character",
-                                                                                                       "Cep l" = "character",
-                                                                                                       "CPF CNPJ" = "character"))
+setwd("D:/Users/sb044936/Documents/IGB/Daily IGB")
+valid = fread("igb_31_01_2019.txt", header = TRUE, dec = ",", check.names = TRUE, colClasses = c("Contrato" = "character",
+                                                                                                 "Cep" = "character",
+                                                                                                 "Cep l" = "character",
+                                                                                                 "CPF CNPJ" = "character"))
 load("bhb_final.RData")
 
 #splitting final database in 11_60 / 61_360 - selecting candidate variables
 
-mod_11_60_valid <- subset(bhb.fecha.valid, qtd_dias_em_atraso >= 11 & qtd_dias_em_atraso <= 60,
+mod_11_60_valid <- subset(valid, qtd_dias_em_atraso >= 11 & qtd_dias_em_atraso <= 60,
                     select = c(-cpf_cnpj,-tabela_neg,-num_chassi,-cep_digito_cli,-cep_cli,-nome_cliente,-vlr_tx_anual_ctr,
                                -cep_loja,-vlr_tx_banco,-vlr_taxa_cliente,-cod_tabela,-nome_placa,-analista_c,
                                -data_contrato, -cod_hda, -vlr_vrg_antecipado, -vlr_vrg_diluido, -vlr_saldo_inicial,
@@ -59,7 +59,7 @@ teste = function(base, segment){
   for(j in seq(0.05,0.95,0.05)){
     db = subset(base, base$segmento == segment) %>%
     mutate(target =  ifelse(tempo_contrato_meses <= 6 |
-                            perc_pg_atr_61_360 <= j,
+                            perc_pg_atr_11_60 <= j,
                             1, 0))
     perc = table(db$target)[2]/(table(db$target)[1]+table(db$target)[2])
     counter = counter + 1
@@ -74,16 +74,6 @@ output_11_60_car = teste(mod_11_60_valid, "CAR")
 output_11_60_mot = teste(mod_11_60_valid, "MOT")
 output_61_360_car = teste(mod_61_360_valid, "CAR")
 output_61_360_mot = teste(mod_61_360_valid, "MOT")
-
-medians = mod_11_60 %>% dplyr::group_by(segmento) %>% dplyr::summarise(median_perc_11_60 = median(perc_pg_atr_11_60, na.rm= TRUE))
-ggplot(mod_11_60,aes(x=perc_pg_atr_11_60, fill = segmento))+
-   geom_density(alpha = 0.4) +
-   geom_vline(aes(xintercept = median_perc_11_60, color="red"), data = medians, linetype="dashed") + facet_wrap(~segmento)
-
-medians = mod_61_360 %>% dplyr::group_by(segmento) %>% dplyr::summarise(median_perc_61_360 = median(perc_pg_atr_61_360, na.rm= TRUE))
-ggplot(mod_61_360,aes(x=perc_pg_atr_61_360, fill = segmento))+
-  geom_density(alpha = 0.4) +
-  geom_vline(aes(xintercept = median_perc_61_360, color="red"), data = medians, linetype="dashed") + facet_wrap(~segmento)
 
 ##############
 

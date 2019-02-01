@@ -68,7 +68,7 @@ load("bhb_fecha_oct_18.RData")
 
 load("bhb_fecha.RData") #OCT, NOV, DEC
 
-bhb.fecha.valid = bhb.fecha.valid %>%
+bhb.fecha.valid = valid %>%
   dplyr::rename("cod_contrato" = "Contrato",
                 "data_contrato" = "Data.Ctr",
                 "tipo_pessoa" = "T",
@@ -181,24 +181,24 @@ bhb.fecha.valid = bhb.fecha.valid %>% dplyr::mutate_at(dplyr::vars(dplyr::starts
 #JOINING DATABASES: PAYMENTS & FECHAMENTO
 
 names(atrasos.count.by.ctr)[1] = "cod_contrato"
-bhb.final <- left_join(bhb.fecha.valid, atrasos.count.by.ctr); bhb.fecha.valid = bhb.fecha.valid %>% select(-MODAL.)
+bhb.fecha.valid <- left_join(bhb.fecha.valid, atrasos.count.by.ctr); bhb.fecha.valid = bhb.fecha.valid %>% select(-MODAL.)
 
 #STANDARDIZING DATABASE & CREATING NEW VARIABLES FOR MODELLING
 
 bhb.final$vlr_renda_mensal_cli = ifelse(bhb.final$vlr_renda_mensal_cli == 1, NA, 
                                         bhb.final$vlr_renda_mensal_cli) 
 
-bhb.final$`idade_cli` =  as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.final$data_nascimento), "years"))
-bhb.final$`tempo_contrato_anos` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.final$data_contrato), "years"))
-bhb.final$`tempo_contrato_meses` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.final$data_contrato), "months"))
-bhb.final$`tempo_desde_ult_pgt` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.final$data_ult_pgt), "days"))
+bhb.fecha.valid$`idade_cli` =  as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.fecha.valid$data_nascimento), "years"))
+bhb.fecha.valid$`tempo_contrato_anos` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.fecha.valid$data_contrato), "years"))
+bhb.fecha.valid$`tempo_contrato_meses` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.fecha.valid$data_contrato), "months"))
+bhb.fecha.valid$`tempo_desde_ult_pgt` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.fecha.valid$data_ult_pgt), "days"))
 
-bhb.final$`perc_parc_pagas` = bhb.final$qtd_parc_pagas / (bhb.final$qtd_parc_pagas + bhb.final$qtd_parc_restantes)
-bhb.final$`perc_vnc_finan` = bhb.final$vlr_vencido / bhb.final$vlr_total_financiado
-bhb.final$`perc_vnc_renda` = bhb.final$vlr_vencido / bhb.final$vlr_renda_mensal
-bhb.final$`perc_vnc_bens` = bhb.final$vlr_vencido / bhb.final$vlr_total_bens
-bhb.final$`perc_ult_pgt_parc` = bhb.final$vlr_ult_pgt / bhb.final$vlr_parcela
-bhb.final$`perc_a_vencer_finan` = bhb.final$vlr_a_vencer / bhb.final$vlr_total_financiado
+bhb.fecha.valid$`perc_parc_pagas` = bhb.fecha.valid$qtd_parc_pagas / (bhb.fecha.valid$qtd_parc_pagas + bhb.fecha.valid$qtd_parc_restantes)
+bhb.fecha.valid$`perc_vnc_finan` = bhb.fecha.valid$vlr_vencido / bhb.fecha.valid$vlr_total_financiado
+bhb.fecha.valid$`perc_vnc_renda` = bhb.fecha.valid$vlr_vencido / bhb.fecha.valid$vlr_renda_mensal
+bhb.fecha.valid$`perc_vnc_bens` = bhb.fecha.valid$vlr_vencido / bhb.fecha.valid$vlr_total_bens
+bhb.fecha.valid$`perc_ult_pgt_parc` = bhb.fecha.valid$vlr_ult_pgt / bhb.fecha.valid$vlr_parcela
+bhb.fecha.valid$`perc_a_vencer_finan` = bhb.fecha.valid$vlr_a_vencer / bhb.fecha.valid$vlr_total_financiado
 
 bhb.final$`perc_pg_atr_1_10` = bhb.final$qtd_pg_atr_1_10_em_1_ano / bhb.final$qtd_pg_atr_em_1_ano
 bhb.final$`perc_pg_atr_1_60` = bhb.final$qtd_pg_atr_1_60_em_1_ano / bhb.final$qtd_pg_atr_em_1_ano
@@ -206,8 +206,8 @@ bhb.final$`perc_pg_atr_11_60` = (bhb.final$qtd_pg_atr_11_30_em_1_ano + bhb.final
 bhb.final$`perc_pg_atr_61_360` = bhb.final$qtd_pg_atr_61_360_em_1_ano / bhb.final$qtd_pg_atr_em_1_ano
 bhb.final$`perc_pg_atr_360_mais` = bhb.final$qtd_pg_atr_360_mais_em_1_ano/ bhb.final$qtd_pg_atr_em_1_ano
 
-bhb.final$`perc_parc_renda` = bhb.final$vlr_parcela/bhb.final$vlr_renda_mensal_cli
-bhb.final$`perc_pg_finan` = (bhb.final$vlr_parcela*bhb.final$qtd_parc_pagas)/bhb.final$vlr_total_financiado
+bhb.fecha.valid$`perc_parc_renda` = bhb.fecha.valid$vlr_parcela/bhb.fecha.valid$vlr_renda_mensal_cli
+bhb.fecha.valid$`perc_pg_finan` = (bhb.fecha.valid$vlr_parcela*bhb.fecha.valid$qtd_parc_pagas)/bhb.fecha.valid$vlr_total_financiado
 
 #AGGREGATING OTHER DATABASES
 setwd("R:/Estatística/BHB/Databases BHB/Another fonts BHB")
@@ -231,7 +231,7 @@ rm(bhb.fecha, atrasos.count.by.ctr, cc); gc(); gc()
 # SUBSTITUTE ALL NUMERIC MISSING DATA WITH 0
 # bhb.fecha = bhb.fecha %>% 
 #                    mutate_at(vars(starts_with("vlr_")), funs(replace(., is.na(.), 0)))
-bhb.final = bhb.final %>% mutate_if(is.numeric, funs(replace(., is.infinite(.), NA))) %>%
+bhb.fecha.valid = bhb.fecha.valid %>% mutate_if(is.numeric, funs(replace(., is.infinite(.), NA))) %>%
                           mutate_if(is.numeric, funs(replace(., is.nan(.), NA)))
 
 names(bhb.final) <- gsub("/", "_", names(bhb.final), fixed = TRUE)

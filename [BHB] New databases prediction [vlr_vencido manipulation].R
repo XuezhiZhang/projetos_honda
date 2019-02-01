@@ -10,18 +10,49 @@ require(tibble)
 require(reshape2)
 require(plyr)
 require(ROCR)
+require(data.table)
 
 segment = "MOT"
-desired_model = "61_360"
+desired_model = "11_60"
 
-setwd("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Models")
-load("lasso_model_61_360_MOT_2019-01-21.RData")
-setwd("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Databases")
-load("bins_mod_61_360_MOT.RData")
-setwd("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Predictions")
-load("selected_var_61_360_MOT_2019-01-21.RData")
+setwd("D:/Users/sb044936/Desktop/Modelling databases R/11_60/Models")
+load("lasso_model_11_60_MOT_2019-01-18_FINAL.RData")
+setwd("D:/Users/sb044936/Desktop/Modelling databases R/11_60/Databases")
+load("bins_mod_11_60_MOT.RData")
+setwd("D:/Users/sb044936/Desktop/Modelling databases R/11_60/Predictions")
+load("selected_var_11_60_MOT_2019-01-18.RData")
 
-db_to_predict = mod_61_360_valid %>% filter(segmento == segment)
+##########################################################
+# alterações em vlr_vencido (adicionando gastos jurídicos)
+
+setwd("D:/Users/sb044936/Desktop/Modelling databases R/Judge")
+initial_costs = fread("initial_costs.txt", header = TRUE, dec = ",", check.names = TRUE)
+posterior_costs = fread("posterior_costs.txt", header = TRUE, dec = ",", check.names = TRUE)
+fees = fread("fees.txt", header = TRUE, dec = ",", check.names = TRUE)
+vlr_presente = fread("bhbvlrprs_1028180000.txt", header = TRUE, dec = ",", check.names = TRUE)
+
+mod_61_360_valid = left_join(mod_61_360_valid, initial_costs)
+mod_61_360_valid = left_join(mod_61_360_valid, posterior_costs)
+mod_61_360_valid = left_join(mod_61_360_valid, fees)
+
+mod_61_360_valid_modified = mod_61_360_valid %>% mutate(vlr_vencido = vlr_vencido + 
+                                                        vlr_medio_ajuiz +
+                                                        vlr_medio_despachante +
+                                                        vlr_medio_leiloeiro +
+                                                        vlr_honorario)
+
+var = data.frame(cod_contrato = mod_61_360_valid$cod_contrato,
+                 vlr_vencido = mod_61_360_valid$vlr_vencido,
+                 vlr_vencido_modified = mod_61_360_valid_modified$vlr_vencido)
+
+var = var %>% mutate(vlr_diferenca = vlr_vencido_modified - vlr_vencido,
+                     variation_vlr_vencido = vlr_vencido_modified/vlr_vencido)
+
+
+
+#########################
+
+db_to_predict = mod_11_60_valid %>% filter(segmento == segment)
 
 #WOE
 # db_woe_bin = woebin(select(db_to_predict, -cod_contrato), y = "target")
@@ -38,7 +69,7 @@ db_to_predict <- predict(preproc, db_to_predict)
 
 db_to_predict = db_to_predict %>% mutate_all(.,as.numeric)
 
-db_to_predict_matrix = data.matrix(select(db_to_predict, -c(cod_contrato, target, perc_pg_atr_61_360)))
+db_to_predict_matrix = data.matrix(select(db_to_predict, -c(cod_contrato, target, perc_pg_atr_11_60)))
 
 "Starting step 4: Predictions and model performance measures.\n\n" %>% cat()
 # Predicting model in test database
@@ -66,7 +97,7 @@ selected_var_woe = paste(coefs$term, sep = "\n"); selected_var_woe <<- c(selecte
 selected_var = str_sub(coefs$term, end = -5); selected_var <<- c("cod_contrato", selected_var, "target")
 
 # Creating dataframe with probabilities
-db_to_predict = mod_61_360_valid %>% filter(segmento == segment)
+db_to_predict = mod_11_60_valid %>% filter(segmento == segment)
 
 paste0("The cutoff probability point that produces greater sensibility+specificity: ", round(cutoff,4), "\n\n") %>% cat()
 
@@ -201,6 +232,7 @@ db_to_predict = final_db %>% mutate(stat_model = paste0(desired_model, " | ", se
                                     stat_model_update = Sys.Date())
 
 setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/", desired_model, "/Predictions"))
-fwrite(perf_stats1, file = paste0("performance_stats_1_jurid_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
-fwrite(perf_stats2, file = paste0("performance_stats_2_jurid_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
-fwrite(db_to_predict, file = paste0("score_by_contract_jurid_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
+fwrite(perf_stats1, file = paste0("performance_stats_1_validation_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
+fwrite(perf_stats2, file = paste0("performance_stats_2_validation_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
+fwrite(db_to_predict, file = paste0("score_by_contract_validation_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
+
