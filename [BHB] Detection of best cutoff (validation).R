@@ -9,7 +9,7 @@ load("bhb_final.RData")
 
 #splitting final database in 11_60 / 61_360 - selecting candidate variables
 
-mod_11_60_valid <- subset(valid, qtd_dias_em_atraso >= 11 & qtd_dias_em_atraso <= 60,
+mod_11_60_valid <- subset(bhb.fecha.valid, qtd_dias_em_atraso >= 11 & qtd_dias_em_atraso <= 60,
                     select = c(-cpf_cnpj,-tabela_neg,-num_chassi,-cep_digito_cli,-cep_cli,-nome_cliente,-vlr_tx_anual_ctr,
                                -cep_loja,-vlr_tx_banco,-vlr_taxa_cliente,-cod_tabela,-nome_placa,-analista_c,
                                -data_contrato, -cod_hda, -vlr_vrg_antecipado, -vlr_vrg_diluido, -vlr_saldo_inicial,
