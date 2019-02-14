@@ -1,6 +1,7 @@
 require(dplyr)
 require(ggplot2)
 require(plyr)
+require(data.table)
 
 ############################################
 #READING ALL FILES WITH HISTORICAL PAYMENTS#

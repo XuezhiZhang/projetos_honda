@@ -20,7 +20,7 @@ load("delay_count_by_contr.RData")
 
 # reading daily database
 setwd("~/IGB/Daily IGB")
-database = fread("igb_daily_08_02.txt", header = TRUE, 
+database = fread("igb_daily_12_02.txt", header = TRUE, 
                  dec = ",", check.names = TRUE, 
                  colClasses = c("Contrato" = "character",
                                 "Cep" = "character",
@@ -93,5 +93,5 @@ for(i in 1:length(desired_model)){
 
 # joining all lists and selecting just the last update in score for each contract
 all_contracts_scored = bind_rows(x) %>% arrange(desc(stat_model_update)) %>% group_by(cod_contrato) %>% top_n(n = 1, wt = stat_model_update)
-all_judge_contracts_scored = bind_rows(y) %>% arrange(desc(stat_model_update)) %>% top_n(n = 1, wt = stat_model_update)
+all_judge_contracts_scored = bind_rows(y) %>% arrange(desc(stat_model_update)) %>% group_by(cod_contrato) %>% top_n(n = 1, wt = stat_model_update)
 # options(warn=0) #turn warnings back on

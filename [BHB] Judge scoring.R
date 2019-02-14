@@ -2,6 +2,7 @@ require(data.table)
 require(dplyr)
 require(BBmisc)
 require(ggplot2)
+require(StatMeasures)
 
 setwd("D:/Users/sb044936/Desktop/Modelling databases R/Judge")
 initial_costs = fread("initial_costs.txt", header = TRUE, dec = ",", check.names = TRUE)
@@ -10,6 +11,7 @@ fees = fread("fees.txt", header = TRUE, dec = ",", check.names = TRUE)
 
 # vlr_presente = fread("bhbvlrprs_1028180000.txt", header = TRUE, dec = ",", check.names = TRUE, colClasses = c("Contrato" = "character"))
 
+y = list()
 setwd("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Daily Predictions - Judge")
 for(i in 1:length(desired_model)){
   setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Daily Predictions - Judge"))
@@ -17,7 +19,7 @@ for(i in 1:length(desired_model)){
   y = bind_rows(lapply(files, fread, colClasses = c(cod_contrato = "character", stat_model_update = "as.Date"), dec = ",", header = TRUE))
 }
 
-all_judge_contracts_scored = bind_rows(y) %>% arrange(desc(stat_model_update))
+all_judge_contracts_scored = bind_rows(y) %>% arrange(desc(stat_model_update)) %>% group_by(cod_contrato) %>% top_n(n = 1, wt = stat_model_update)
 # pred = bind_rows(pred_car, pred_mot) %>% select(cod_contrato, segmento, nome_estado_cli, nome_municipio_cli, vlr_vencido, prob_bad, prob_good, score, stat_model, stat_model_update)
 
 # names(vlr_presente)[6] = "cod_contrato"
@@ -51,10 +53,22 @@ join = join %>% select("cod_contrato", "segmento", "qtd_dias_em_atraso",
                        "prob_good","score", "cluster", "stat_model",           
                        "stat_model_update", "descricao_uf","vlr_medio_ajuiz",      
                        "vlr_medio_despachante", "vlr_medio_leiloeiro", "perc_vlr_vnc_mais_enc_renda" ,"vlr_vencido", 
-                       "vlr_vnc_mais_enc", "var", "ranking_ajuiz") %>% arrange(desc(ranking_ajuiz))
+                       "vlr_vnc_mais_enc", "var", "ranking_ajuiz") %>% arrange(desc(ranking_ajuiz)) %>% group_by(cod_contrato) %>% top_n(n = 1, wt = stat_model_update)
 
 setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Daily Predictions - Judge"))
 fwrite(join, file = paste0("judge_ranking_by_contract_daily_", Sys.Date(),".csv"), sep = ";", dec = ",")
+
+breaks = seq(0,1000,50)
+join$ranking_break = cut(join$ranking_ajuiz, breaks = breaks)
+join$ranking_break_cod = cut(join$ranking_ajuiz, breaks = breaks, labels = FALSE)
+
+view = join %>% group_by(ranking_break) %>% 
+                summarise(n = n()) %>% filter(!is.na(ranking_break)) %>%
+                mutate(prop = (cumsum(n/sum(n)))*100, prop.n = cumsum(n),id = row_number()) %>%
+                arrange(desc(id)) %>%
+                mutate(prop2 = (cumsum(n/sum(n)))*100, prop2.n = cumsum(n)) %>%
+                select(-id)
+
 
 #########
 # plots #
@@ -74,14 +88,16 @@ plot <- ggplot(join, aes(ranking_ajuiz, perc_vlr_vnc_mais_enc_renda*100)) +
                                         max(join$perc_vlr_vnc_mais_enc_renda, na.rm = TRUE)*100, by = 100),1))
 plot
 
-plot <- ggplot(join, aes(ranking_ajuiz, vlr_vencido)) + 
+join2 = join %>% filter(segmento == "MOT")
+
+plot <- ggplot(join2, aes(ranking_ajuiz, vlr_vencido)) + 
   geom_point(aes(colour = factor(cluster))) + 
   scale_color_manual(values=c("darkorange1", "yellow2", "brown2", "green4")) +
   labs(title = "Judge Ranking | 61-360",
        x = "judge ranking", 
        y = "owed value",
        color = "cluster") +
-  facet_wrap(~ segmento) +
+  #facet_wrap(~ segmento) +
   theme(legend.position="bottom")
 plot
 
@@ -106,3 +122,5 @@ plot <- ggplot(join, aes(ranking_ajuiz, var)) +
   facet_wrap(~ segmento) +
   theme(legend.position="bottom")
 plot
+
+#################################

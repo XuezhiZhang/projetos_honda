@@ -483,8 +483,7 @@ modelling = function(base_desired_model, desired_model, segment){
                               scale_color_manual(values=c("brown2", "darkorange1", "yellow2", "green4")) +
       labs(title=paste0("Collection model clusters | ", desired_model, " | ", segment), x="collection score", y="geometric mean of selected variable", col = "cluster",
            caption = paste0("Based on data from IGB: ", segment, " | ", desired_model, " | ", "daily result: ", Sys.Date()))
-  cluster_prob_2  
-  
+
   #####################################
   
   # plotting both plots together
