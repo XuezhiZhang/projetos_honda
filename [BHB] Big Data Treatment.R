@@ -1,3 +1,4 @@
+# loading all functions created for modelling: preparing, writing & develop_scorecard
 setwd("R:/Estatística/BHB/R Scripts")
 if(!exists("foo", mode="function")) source("[BHB] Functions modelling.R")
 
@@ -46,12 +47,12 @@ modelling <- function(mod_segment, model, segment){
       registerDoSEQ() #library to "unregister" a foreach backend, registering the sequential backend
       # Finding best lambda using cross-validation
       set.seed(123)
-      cv.lasso <- cv.glmnet(X, y, alpha = 1, family = "binomial",  type.measure = "auc", parallel = TRUE, penalty.factor = penalty.factor)
+      cv.lasso <- cv.glmnet(X, y, alpha = 1, family = "binomial",  type.measure = "auc")#, parallel = TRUE, penalty.factor = penalty.factor)
       "Step 2: cross-validation to find best lambda done.\n\n" %>% cat()
       
       filename=paste0("D:/Users/sb044936/Desktop/Modelling databases R/",desired_model,"/Plots/Lambda_", segment, "_", Sys.Date(), ".tiff")
       tiff(filename, units="in", width=12, height=8, res=500)
-      plot(cv.lasso, main = paste0(desired_model, " | ", segment, " | ", Sys.Date()))
+      plot(cv.lasso)#, main = paste0(desired_model, " | ", segment, " | ", Sys.Date()))
       dev.off()
       
       tmp_coeffs <- coef(cv.lasso, s = "lambda.1se")
@@ -62,11 +63,12 @@ modelling <- function(mod_segment, model, segment){
           lambda = ifelse(variables <= 20, cv.lasso$lambda.1se, 
                           cv.lasso$lambda.min + 2*(cv.lasso$lambda.1se - cv.lasso$lambda.min))
           
+          # testing to add weights to model
           # model_weights <- ifelse(dbs$train_db_woe$target == "1",
           #                         (1/table(dbs$train_db_woe$target)[1]) * 0.5,
           #                         (1/table(dbs$train_db_woe$target)[2]) * 0.5)
           
-          #cross-validation to obtain best alpha / lambda
+          # cross-validation to obtain best alpha & lambda in a loop (elastic net)
           # a <- seq(0.1, 0.9, 0.05)
           # search <- foreach(i = a, .combine = rbind) %dopar% {
           #   cv <- cv.glmnet(X, y, 
@@ -76,14 +78,17 @@ modelling <- function(mod_segment, model, segment){
           # cv3 <- search[search$cvm == min(search$cvm), ]
           # lasso.model <- glmnet(X, y, family = "binomial", lambda = cv3$lambda.1se, alpha = cv3$alpha)
           
-          lasso.model <- glmnet(X, y, family = "binomial", lambda = lambda, alpha = 1, penalty.factor = penalty.factor)
+          lasso.model <- glmnet(X, y, family = "binomial", lambda = lambda, alpha = 1)#, penalty.factor = penalty.factor)
           "Step 3: LASSO model done.\n" %>% cat()
 
           coefs <- tidy(lasso.model)
           coefs <- coefs[-1,]
           selected_var_woe = paste(coefs$term, sep = "\n"); selected_var_woe <<- c(selected_var_woe, "target")
           selected_var = str_sub(coefs$term, end = -5); selected_var <<- c(selected_var, "target")
-          # 
+          
+          # development of model using caret: not using because of memory. but it is the best way. :)
+          # caret needs lots of memory (cross validation and outputs).
+          
           # #glm.model <<- glm(fmla, dbs$train_db_woe, family = "binomial")
           # 
           # model_db = dbs$train_db_woe; model_db$target = ifelse(model_db$target == 1, "badpayer", "goodpayer")
@@ -160,7 +165,7 @@ modelling <- function(mod_segment, model, segment){
               cutoff <<- acc.perf@alpha.values[[1]][which.max(acc.perf@x.values[[1]]+acc.perf@y.values[[1]])]
 
               predicted.classes <- ifelse(probabilities > cutoff, "badpayer", "goodpayer")
-              observed.classes <- ifelse(dbs$test_db_woe$target == 1, "badpayer", "goodpayer")
+              observed.classes <- ifelse(dbs$test_db_woe$target == "bad", "badpayer", "goodpayer")
               
               observed.classes.num <- ifelse(observed.classes == "badpayer", 1, 0)
               predicted.classes.num <- ifelse(predicted.classes == "badpayer", 1, 0)
@@ -208,19 +213,3 @@ modelling <- function(mod_segment, model, segment){
                   develop_scorecard(selected_var, desired_model, segment)
                   "Step 5: Clustering and creating scorecard done.\n\n" %>% cat()
                   }
-
-desired_model = "11_60"
-desired_model = "61_360"
-segment = "CAR"
-segment = "MOT"
-modelling(mod_11_60, "11_60", "CAR")
-modelling(mod_11_60, "11_60", "MOT")
-modelling(mod_61_360, "61_360", "CAR")
-modelling(mod_61_360, "61_360", "MOT")
-
-########
-
-
-resample_stats <- thresholder(model.down, 
-                              threshold = seq(.5, 1, by = 0.05), 
-                              final = TRUE)
