@@ -7,17 +7,31 @@ require(data.table)
 #READING ALL FILES WITH HISTORICAL PAYMENTS#
 ############################################
 
-setwd("R:/Estatística/BHB/Databases BHB/Historical Payments BHB")
-# load("bhb_hist_paym_jan'18_dez'18.RData")
+setwd("R:/Estatística/BHB/Databases BHB/Historical Payments BHB/All historic")
 
-bhb.hist.paym <- list.files(pattern = "*.txt") %>%
-  lapply(fread, stringsAsFactors=F,
-         colClasses = c("CONT" = "character",
-                        "N. N" = "character"), dec = ",",
-         header = TRUE) %>%
-  bind_rows
+x = sapply(list.files(pattern = "*.txt"), fread, colClasses = c("CONT" = "character",
+                                                                "N. N" = "character"), na.strings = c("", " ", "#N/D"), dec = ",")
 
-#save(bhb.hist.paym, file ="bhb_hist_paym_nov'17_dez'18.RData")
+load("bhb_hist_paym_all.RData")
+
+bhb.hist.paym = bind_rows(bhb.hist.paym.2013, bhb.hist.paym.2014)
+bhb.hist.paym = bind_rows(bhb.hist.paym, bhb.hist.paym.2015)
+bhb.hist.paym = bind_rows(bhb.hist.paym, bhb.hist.paym.2016)
+bhb.hist.paym = bind_rows(bhb.hist.paym, bhb.hist.paym.2017)
+bhb.hist.paym = bind_rows(bhb.hist.paym, bhb.hist.paym.2018)
+bhb.hist.paym = bind_rows(bhb.hist.paym, bhb.hist.paym.2019)
+
+rm(bhb.hist.paym.2013, bhb.hist.paym.2014, bhb.hist.paym.2015,
+   bhb.hist.paym.2016, bhb.hist.paym.2017, bhb.hist.paym.2018, 
+   bhb.hist.paym.2019)
+
+bhb.hist.paym = bhb.hist.paym %>% select(-c("debt", "debt-desc", "FAIA LOSS", "FAIXA 1", "FAIXA LOSS", "FAIXA", "STATUS",
+                                            "V10", "DEBT-DEC", "DEBT-DESC", "Faixa", "DEB-DESC"))
+
+bhb.hist.paym = bhb.hist.paym %>% select(-c(`JUR + MULTA`, `JUROS+MULTA`, `JUROS + MULTA`, `ATRASO LOSS`, V27, V28, UF, V29, V30))
+bhb.hist.paym = bhb.hist.paym %>% distinct()
+
+save(bhb.hist.paym, file = "bhb_hist_paym_all.RData")
 
 ###############
 #TRATANDO BASE#
@@ -31,60 +45,280 @@ bhb.hist.paym <- list.files(pattern = "*.txt") %>%
 #                                        vlr_parc_pgs_1_ano = sum(`VR PARCELA`, na.rm = TRUE),
 #                                        vlr_pg_1_ano = sum(`VALOR DO BOLETO`, na.rm = TRUE))
 
-atraso.count <- bhb.hist.paym %>% dplyr::filter(ATRASO > 0) %>% 
-                                  dplyr::group_by(CONT, MODAL.) %>% 
-                                  dplyr::summarise(qtd_pg_atr_em_1_ano = n(),
-                                                   valor_pg_atr_em_1_ano = sum(`VALOR DO BOLETO`, na.rm = TRUE)) 
 
-atraso.1.10.count = bhb.hist.paym %>% dplyr::filter(ATRASO >= 1 & ATRASO <= 10) %>% 
-                                      dplyr::group_by(CONT) %>% 
-                                      dplyr::summarise(qtd_pg_atr_1_10_em_1_ano = n(),
-                                                       vlr_pg_atr_1_10_em_1_ano = sum(`VALOR DO BOLETO`, na.rm = TRUE)) 
+bhb.hist.paym = bhb.hist.paym %>% dplyr::rename("escritorio" = "ESCRITORIO",
+                                         "cod_contrato" = "CONT",
+                                         "n_n" = "N. N",
+                                         "data_pagamento" = "DT_PGTO",
+                                         "data_vnc" = "VTO PARC",
+                                         "dias_atrasados" = "ATRASO",
+                                         "data_emissao" = "EMISSÃO",
+                                         "parcela" = "PARC",
+                                         "data_agendamento" = "DT AGEND.",
+                                         "situacao" = "SITUAÇÃO",
+                                         "campanha" = "CAMPANHA",
+                                         "segmento" = "MODAL.",
+                                         "dif_valor" = "DIF VALOR",
+                                         "vlr_parcela" = "VR PARCELA",
+                                         "vlr_juros" = "JUROS",
+                                         "vlr_multa" = "MULTA",
+                                         "vlr_debt" = "DEBT",
+                                         "vlr_honor" = "HONOR.",
+                                         "vlr_desc" = "DESC.",
+                                         "vlr_custas" = "CUSTAS",
+                                         "vlr_total" = "VALOR TOTAL",
+                                         "vlr_boleto" = "VALOR DO BOLETO")
 
-atraso.11.30.count = bhb.hist.paym %>% dplyr::filter(ATRASO >= 11 & ATRASO <= 30) %>% 
-                                       dplyr::group_by(CONT) %>% 
-                                       dplyr::summarise(qtd_pg_atr_11_30_em_1_ano = n(),
-                                                         vlr_pg_atr_11_30_em_1_ano = sum(`VALOR DO BOLETO`, na.rm = TRUE)) 
+bhb.hist.paym = bhb.hist.paym %>% dplyr::mutate_at(dplyr::vars(dplyr::starts_with("data_")), 
+                                                   funs(as.Date(as.character(.), 
+                                                                format = "%d/%m/%Y")))
 
-atraso.11.60.count = bhb.hist.paym %>% dplyr::filter(ATRASO >= 11 & ATRASO <= 60) %>% 
-                                       dplyr::group_by(CONT) %>% 
-                                       dplyr::summarise(qtd_pg_atr_11_60_em_1_ano = n(),
-                                                         vlr_pg_atr_11_60_em_1_ano = sum(`VALOR DO BOLETO`, na.rm = TRUE)) 
+# creating cut for "time in delay" column: (0,30], (30,60], ...
+# db.2018 = db.2018 %>% dplyr::mutate_at(dplyr::vars(dplyr::starts_with("data_")),
+#                                                    funs(as.Date(as.character(.),
+#                                                                 format = "%d/%m/%Y")))
+# 
+# db.2018$cut = cut(db.2018$qtd_dias_em_atraso, breaks = c(seq(0, 360, by = 30)))
+# 
+# overview = teste %>% group_by(cut, target, segmento) %>% summarise(n = n())
+# 
+# teste$`delay+6months` = teste$data_vnc + 180
+# 
+# 
+# 
+# contract = teste %>% filter(cod_contrato == "1154851")
 
-atraso.1.30.count = bhb.hist.paym %>% dplyr::filter(ATRASO >= 1 & ATRASO <= 30) %>% 
-                                      dplyr::group_by(CONT) %>% 
-                                      dplyr::summarise(qtd_pg_atr_1_30_em_1_ano = n(),
-                                                       vlr_pg_atr_1_30_em_1_ano = sum(`VALOR DO BOLETO`, na.rm = TRUE)) 
+# train 6 months perfomance window
+date = "2016-12"
+date.3 = "2016-10"
+date.12 = "2016-01" # also define 1 year of observation window
 
-atraso.1.60.count = bhb.hist.paym %>% dplyr::filter(ATRASO >= 1 & ATRASO <= 60) %>% 
-                                      dplyr::group_by(CONT) %>% 
-                                      dplyr::summarise(qtd_pg_atr_1_60_em_1_ano = n(),
-                                                       vlr_pg_atr_1_60_em_1_ano = sum(`VALOR DO BOLETO`, na.rm = TRUE)) 
+# validation (oot) 6 months performance window
+date = "2018-06"
+date.3 = "2018-03"
+date.12 = "2017-07" # also define 1 year of observation window
 
-atraso.31.60.count = bhb.hist.paym %>% dplyr::filter(ATRASO >= 31 & ATRASO <= 60) %>% 
-                                       dplyr::group_by(CONT) %>% 
-                                       dplyr::summarise(qtd_pg_atr_31_60_em_1_ano = n(),
-                                                         vlr_pg_atr_31_60_em_1_ano = sum(`VALOR DO BOLETO`, na.rm = TRUE)) 
+# train 3 months perfomance window
+date.12 = "2017-06" # also define 1 year of observation window
+date.7 = "2017-02"
+date.4 = "2016-11"
+date.1 = "2016-07" 
 
-atraso.61.360.count = bhb.hist.paym %>% dplyr::filter(ATRASO >= 61 & ATRASO <= 360) %>% 
-                                        dplyr::group_by(CONT) %>% 
-                                        dplyr::summarise(qtd_pg_atr_61_360_em_1_ano = n(),
-                                                         vlr_pg_atr_61_360_em_1_ano = sum(`VALOR DO BOLETO`, na.rm = TRUE)) 
+# validation (oot) 3 months performance window
+date = "2018-09"
+date.3 = "2018-07"
+date.12 = "2017-10" # also define 1 year of observation window
 
-atraso.1.360.count = bhb.hist.paym %>% dplyr::filter(ATRASO >= 1 & ATRASO <= 360) %>% 
-                                       dplyr::group_by(CONT) %>% 
-                                       dplyr::summarise(qtd_pg_atr_1_360_em_1_ano = n(),
-                                                        vlr_pg_atr_1_360_em_1_ano = sum(`VALOR DO BOLETO`, na.rm = TRUE)) 
+# selecting just moments until data cut for performance window
+bhb.hist.paym = bhb.hist.paym %>% filter(format(as.Date(data_pagamento), "%Y-%m") <= date.12)
 
+################################
+# creation of historical counts#
+################################
 
-atraso.361.mais.count = bhb.hist.paym %>% dplyr::filter(ATRASO >= 361) %>% 
-                                          dplyr::group_by(CONT) %>% 
-                                          dplyr::summarise(qtd_pg_atr_360_mais_em_1_ano = n(),
-                                                             vlr_pg_atr_360_mais_em_1_ano = sum(`VALOR DO BOLETO`, na.rm = TRUE)) 
+# delays & payments count between observation window
+
+atraso.count.1 = bhb.hist.paym %>% dplyr::filter(dias_atrasados > 0 &
+                                                   format(as.Date(data_pagamento), "%Y-%m") == date.1) %>%
+                                  dplyr::group_by(cod_contrato) %>% 
+                                  dplyr::summarise(qtd_pg_atr_1_mes = n(),
+                                                   vlr_pg_atr_1_mes = sum(vlr_boleto, na.rm = TRUE))
+
+atraso.count.4 = bhb.hist.paym %>% dplyr::filter(dias_atrasados > 0 &
+                                                   format(as.Date(data_pagamento), "%Y-%m") >= date.1 &
+                                                   format(as.Date(data_pagamento), "%Y-%m") <= date.4) %>%
+                                  dplyr::group_by(cod_contrato) %>% 
+                                  dplyr::summarise(qtd_pg_atr_4_meses = n(),
+                                                   vlr_pg_atr_4_meses = sum(vlr_boleto, na.rm = TRUE))
+
+atraso.count.7 = bhb.hist.paym %>% dplyr::filter(dias_atrasados > 0 &
+                                                   format(as.Date(data_pagamento), "%Y-%m") >= date.1 &
+                                                   format(as.Date(data_pagamento), "%Y-%m") <= date.7) %>%
+                                  dplyr::group_by(cod_contrato) %>% 
+                                  dplyr::summarise(qtd_pg_atr_7_meses = n(),
+                                                   vlr_pg_atr_7_meses = sum(vlr_boleto, na.rm = TRUE))
+
+atraso.count.12 = bhb.hist.paym %>% dplyr::filter(dias_atrasados > 0 &
+                                                    format(as.Date(data_pagamento), "%Y-%m") >= date.1 &
+                                                    format(as.Date(data_pagamento), "%Y-%m") <= date.12) %>%
+                                  dplyr::group_by(cod_contrato) %>% 
+                                  dplyr::summarise(qtd_pg_atr_12_meses = n(),
+                                                   vlr_pg_atr_12_meses = sum(vlr_boleto, na.rm = TRUE))
+
+pagam.count.1 <- bhb.hist.paym %>% 
+                      dplyr::filter(format(as.Date(data_pagamento), "%Y-%m") == date.1) %>%
+                      dplyr::group_by(cod_contrato) %>% 
+                      dplyr::summarise(qtd_pg_1_mes = n(),
+                                       valor_pg_1_mes = sum(vlr_boleto, na.rm = TRUE))
+
+pagam.count.4 <- bhb.hist.paym %>% 
+                       dplyr::filter(format(as.Date(data_pagamento), "%Y-%m") >= date.1 &
+                                     format(as.Date(data_pagamento), "%Y-%m") <= date.4) %>%
+                       dplyr::group_by(cod_contrato) %>% 
+                       dplyr::summarise(qtd_pg_4_meses = n(),
+                                        valor_pg_4_meses = sum(vlr_boleto, na.rm = TRUE))
+
+pagam.count.7 <- bhb.hist.paym %>% 
+                      dplyr::filter(format(as.Date(data_pagamento), "%Y-%m") >= date.1 &
+                                    format(as.Date(data_pagamento), "%Y-%m") <= date.7) %>%
+                      dplyr::group_by(cod_contrato) %>% 
+                      dplyr::summarise(qtd_pg_7_meses = n(),
+                                       valor_pg_7_meses = sum(vlr_boleto, na.rm = TRUE))
+
+pagam.count.12 <- bhb.hist.paym %>% 
+                        dplyr::filter(format(as.Date(data_pagamento), "%Y-%m") >= date.1 &
+                                      format(as.Date(data_pagamento), "%Y-%m") <= date.12) %>%
+                        dplyr::group_by(cod_contrato) %>% 
+                        dplyr::summarise(qtd_pg_12_meses = n(),
+                                         valor_pg_12_meses = sum(vlr_boleto, na.rm = TRUE))
+
+count.all = left_join(atraso.count.1, atraso.count.4, by = "cod_contrato"); rm(atraso.count.1, atraso.count.4)
+count.all = left_join(count.all, atraso.count.7, by = "cod_contrato"); rm(atraso.count.7)
+count.all = left_join(count.all, atraso.count.12, by = "cod_contrato"); rm(atraso.count.12)
+count.all = left_join(count.all, pagam.count.1, by = "cod_contrato"); rm(pagam.count.1)
+count.all = left_join(count.all, pagam.count.4, by = "cod_contrato"); rm(pagam.count.4)
+count.all = left_join(count.all, pagam.count.7, by = "cod_contrato"); rm(pagam.count.7)
+count.all = left_join(count.all, pagam.count.12, by = "cod_contrato"); rm(pagam.count.12)
+
+count.all = count.all %>% mutate_if(is.numeric, funs(replace(., is.na(.), 0)))
+
+# first delay
+primeiro.atraso = bhb.hist.paym %>% dplyr::filter(dias_atrasados > 0) %>% 
+                                    dplyr::group_by(cod_contrato) %>% 
+                                    dplyr::summarise(data_primeiro_atraso = min(data_pagamento, na.rm = TRUE))
+
+count.all = left_join(count.all, primeiro.atraso, by = "cod_contrato")
+
+# count how many consecutive sequences of installments were paid with delay
+# y = bhb.hist.paym %>% group_by(cod_contrato) %>% 
+#                       arrange(parcela) %>%
+#                       mutate(y = paste(rle(diff(sort(parcela))), collapse = ", "))
+# 
+# y = y %>% select(cod_contrato, y)
+# 
+# teste = bhb.hist.paym %>% filter(cod_contrato == "1000622")
+# 
+# paste(rle(diff(sort(teste$parcela))), collapse = ", ")
+# x = rle(diff(sort(teste$parcela)))
+# 
+# # size of repetitions
+# length(x$lengths[x$values==1])
+
+# biggest time without payments
+max.dif.entre.pgto = bhb.hist.paym %>% dplyr::filter(format(as.Date(data_pagamento), "%Y-%m") >= date.1 & 
+                                                     format(as.Date(data_pagamento), "%Y-%m") <= date.12) %>%
+                                       dplyr::group_by(cod_contrato) %>% 
+                                       dplyr::arrange(data_pagamento) %>%
+                                       dplyr::mutate(max_dif_entre_pgto = max(diff(data_pagamento), na.rm = TRUE)) %>% 
+                                       dplyr::select(cod_contrato, max_dif_entre_pgto) %>% distinct()
+
+# substituting "-inf" to 0
+max.dif.entre.pgto = max.dif.entre.pgto %>% mutate_at(vars(max_dif_entre_pgto), 
+                                                      funs(ifelse(is.infinite(.), 0, .)))
+
+# adding max tempo sem pagamento to count.all database
+count.all = left_join(count.all, max.dif.entre.pgto, by = "cod_contrato")
+
+# max delay
+max.atraso = bhb.hist.paym %>% dplyr::filter(format(as.Date(data_pagamento), "%Y-%m") >= date.1 & 
+                                             format(as.Date(data_pagamento), "%Y-%m") <= date.12 &
+                                               dias_atrasados > 0) %>%
+                                       dplyr::group_by(cod_contrato) %>%
+                                       dplyr::arrange(dias_atrasados) %>%
+                                       dplyr::summarise(max_atraso = max(dias_atrasados, na.rm = TRUE)) %>% distinct()
+
+# min delay
+min.atraso = bhb.hist.paym %>% dplyr::filter(format(as.Date(data_pagamento), "%Y-%m") >= date.1 & 
+                                             format(as.Date(data_pagamento), "%Y-%m") <= date.12 &
+                                               dias_atrasados >= 0) %>%
+                                       dplyr::group_by(cod_contrato) %>% 
+                                       dplyr::arrange(dias_atrasados) %>%
+                                       dplyr::summarise(min_atraso = min(dias_atrasados, na.rm = TRUE)) %>% distinct()
+
+# first installment delayed?
+primeira.parcela = bhb.hist.paym %>% filter(parcela == 1 & dias_atrasados > 0) %>% 
+                                     select(cod_contrato, dias_atrasados) %>% 
+                                     rename("dias_atr_primeira_parc" = "dias_atrasados")
+primeira.parcela$atr_primeira_parc = "sim"
+
+count.all = left_join(count.all, max.atraso)
+count.all = left_join(count.all, min.atraso)
+count.all = left_join(count.all, primeira.parcela)
+count.all = count.all %>% mutate_at(vars(atr_primeira_parc), 
+                                    funs(ifelse(is.na(.), "não", .)))
+
+##########
+
+# teste = bhb.hist.paym %>% filter(cod_contrato == "1000188")
+
+# delays between timeframes
+
+atraso.1.10.count = bhb.hist.paym %>% dplyr::filter(dias_atrasados >= 1 & dias_atrasados <= 10 &
+                                                      format(as.Date(data_pagamento), "%Y-%m") >= date.1 & 
+                                                      format(as.Date(data_pagamento), "%Y-%m") <= date.12) %>% 
+                                      dplyr::group_by(cod_contrato) %>% 
+                                      dplyr::summarise(qtd_pg_atr_1_10 = n(),
+                                                       vlr_pg_atr_1_10 = sum(vlr_boleto, na.rm = TRUE)) 
+
+atraso.11.30.count = bhb.hist.paym %>% dplyr::filter(dias_atrasados >= 11 & dias_atrasados <= 30 &
+                                                       format(as.Date(data_pagamento), "%Y-%m") >= date.1 & 
+                                                       format(as.Date(data_pagamento), "%Y-%m") <= date.12) %>% 
+                                       dplyr::group_by(cod_contrato) %>% 
+                                       dplyr::summarise(qtd_pg_atr_11_30 = n(),
+                                                         vlr_pg_atr_11_30 = sum(vlr_boleto, na.rm = TRUE)) 
+
+atraso.11.60.count = bhb.hist.paym %>% dplyr::filter(dias_atrasados >= 11 & dias_atrasados <= 60 &
+                                                       format(as.Date(data_pagamento), "%Y-%m") >= date.1 & 
+                                                       format(as.Date(data_pagamento), "%Y-%m") <= date.12) %>% 
+                                       dplyr::group_by(cod_contrato) %>% 
+                                       dplyr::summarise(qtd_pg_atr_11_60 = n(),
+                                                         vlr_pg_atr_11_60 = sum(vlr_boleto, na.rm = TRUE)) 
+
+atraso.1.30.count = bhb.hist.paym %>% dplyr::filter(dias_atrasados >= 1 & dias_atrasados <= 30 &
+                                                      format(as.Date(data_pagamento), "%Y-%m") >= date.1 & 
+                                                      format(as.Date(data_pagamento), "%Y-%m") <= date.12) %>% 
+                                      dplyr::group_by(cod_contrato) %>% 
+                                      dplyr::summarise(qtd_pg_atr_1_30 = n(),
+                                                       vlr_pg_atr_1_30 = sum(vlr_boleto, na.rm = TRUE)) 
+
+atraso.1.60.count = bhb.hist.paym %>% dplyr::filter(dias_atrasados >= 1 & dias_atrasados <= 60 &
+                                                      format(as.Date(data_pagamento), "%Y-%m") >= date.1 & 
+                                                      format(as.Date(data_pagamento), "%Y-%m") <= date.12) %>% 
+                                      dplyr::group_by(cod_contrato) %>% 
+                                      dplyr::summarise(qtd_pg_atr_1_60 = n(),
+                                                       vlr_pg_atr_1_60 = sum(vlr_boleto, na.rm = TRUE)) 
+
+atraso.31.60.count = bhb.hist.paym %>% dplyr::filter(dias_atrasados >= 31 & dias_atrasados <= 60 &
+                                                       format(as.Date(data_pagamento), "%Y-%m") >= date.1 & 
+                                                       format(as.Date(data_pagamento), "%Y-%m") <= date.12) %>% 
+                                       dplyr::group_by(cod_contrato) %>% 
+                                       dplyr::summarise(qtd_pg_atr_31_60 = n(),
+                                                         vlr_pg_atr_31_60 = sum(vlr_boleto, na.rm = TRUE)) 
+
+atraso.61.360.count = bhb.hist.paym %>% dplyr::filter(dias_atrasados >= 61 & dias_atrasados <= 360 &
+                                                        format(as.Date(data_pagamento), "%Y-%m") >= date.1 & 
+                                                        format(as.Date(data_pagamento), "%Y-%m") <= date.12) %>% 
+                                        dplyr::group_by(cod_contrato) %>% 
+                                        dplyr::summarise(qtd_pg_atr_61_360 = n(),
+                                                         vlr_pg_atr_61_360 = sum(vlr_boleto, na.rm = TRUE)) 
+
+atraso.1.360.count = bhb.hist.paym %>% dplyr::filter(dias_atrasados >= 1 & dias_atrasados <= 360 &
+                                                       format(as.Date(data_pagamento), "%Y-%m") >= date.1 & 
+                                                       format(as.Date(data_pagamento), "%Y-%m") <= date.12) %>% 
+                                       dplyr::group_by(cod_contrato) %>% 
+                                       dplyr::summarise(qtd_pg_atr_1_360 = n(),
+                                                        vlr_pg_atr_1_360 = sum(vlr_boleto, na.rm = TRUE)) 
+
+atraso.361.mais.count = bhb.hist.paym %>% dplyr::filter(dias_atrasados >= 361 &
+                                                          format(as.Date(data_pagamento), "%Y-%m") >= date.1 & 
+                                                          format(as.Date(data_pagamento), "%Y-%m") <= date.12) %>% 
+                                          dplyr::group_by(cod_contrato) %>% 
+                                          dplyr::summarise(qtd_pg_atr_360_mais = n(),
+                                                             vlr_pg_atr_360_mais = sum(vlr_boleto, na.rm = TRUE)) 
 
 #atrasos.count.by.sit = dcast(atraso.sit.count, CONT ~ `SITUAÇÃO`, value.var = "n")
 
-atrasos.count.by.ctr <- full_join(atraso.count, atraso.1.10.count)
+atrasos.count.by.ctr <- atraso.1.10.count
 atrasos.count.by.ctr <- full_join(atrasos.count.by.ctr, atraso.1.30.count)
 atrasos.count.by.ctr <- full_join(atrasos.count.by.ctr, atraso.1.60.count)
 atrasos.count.by.ctr <- full_join(atrasos.count.by.ctr, atraso.11.30.count)
@@ -94,15 +328,17 @@ atrasos.count.by.ctr <- full_join(atrasos.count.by.ctr, atraso.61.360.count)
 atrasos.count.by.ctr <- full_join(atrasos.count.by.ctr, atraso.1.360.count)
 atrasos.count.by.ctr <- full_join(atrasos.count.by.ctr, atraso.361.mais.count)
 
+count.all = left_join(count.all, atrasos.count.by.ctr, by = "cod_contrato")
+
 #removing all unnecessary databases
 
-rm(atraso.count, atraso.1.10.count, atraso.11.30.count, 
+rm(atraso.1.10.count, atraso.11.30.count, 
    atraso.11.60.count, atraso.1.30.count, atraso.1.60.count, atraso.31.60.count,
    atraso.61.360.count, atraso.1.360.count, atraso.361.mais.count)
 gc(); gc()
 
-save(atrasos.count.by.ctr, file = "delay_count_by_contr.RData")
-# load("delay_count_by_contr.RData")
+save(count.all, file = "delay_count_by_contr_until_201706.RData")
+load("delay_count_by_contr_until_201706.RData")
 
 ################
 #VISUALIZATIONS#
