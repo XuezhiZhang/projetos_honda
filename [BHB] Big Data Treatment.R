@@ -58,7 +58,7 @@ modelling <- function(mod_segment, model, segment){
       tmp_coeffs <- coef(cv.lasso, s = "lambda.1se")
       variables = nrow(data.frame(name = tmp_coeffs@Dimnames[[1]][tmp_coeffs@i + 1], coefficient = tmp_coeffs@x))
       
-                "Starting step 3: running LASSO to select features.\n\n" %>% cat()
+          "Starting step 3: running LASSO to select features.\n\n" %>% cat()
           # Creating model with lambda 1se
           lambda = ifelse(variables <= 20, cv.lasso$lambda.1se, 
                           cv.lasso$lambda.min + 2*(cv.lasso$lambda.1se - cv.lasso$lambda.min))
