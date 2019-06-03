@@ -20,7 +20,7 @@ load("delay_count_by_contr.RData")
 
 # reading daily database
 setwd("~/IGB/Daily IGB")
-database = fread("igb_daily_12_02.txt", header = TRUE, 
+database = fread("igb_daily_01_04.txt", header = TRUE, 
                  dec = ",", check.names = TRUE, 
                  colClasses = c("Contrato" = "character",
                                 "Cep" = "character",
@@ -76,17 +76,15 @@ for(j in 1:length(segment)){
 
 # creating an unique database for all scored contracts
 x = list()
-
 for(i in 1:length(desired_model)){
-  setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/", desired_model[i], "/Daily Predictions"))
+  setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/", desired_model[i], "/Daily Predictions/Março"))
   files = list.files(pattern="score_by_contract.*csv")
   x[[i]] = bind_rows(lapply(files, fread, colClasses = c(cod_contrato = "character", stat_model_update = "as.Date"), dec = ",", header = TRUE))
 }
 
 y = list()
-
 for(i in 1:length(desired_model)){
-  setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Daily Predictions - Judge"))
+  setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Daily Predictions - Judge/Março"))
   files = list.files(pattern="score_by_contract.*csv")
   y = bind_rows(lapply(files, fread, colClasses = c(cod_contrato = "character", stat_model_update = "as.Date"), dec = ",", header = TRUE))
 }

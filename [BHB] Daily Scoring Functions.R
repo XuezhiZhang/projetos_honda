@@ -113,23 +113,26 @@ formatting_database = function(database){
   
   # FILTERING NECESSARY CONTRACTS AND MANIPULATING DATE COLUMNS 
   bhb.final = bhb.final %>% subset(qtd_parc_restantes > 0)
+  bhb.final = bhb.final %>% subset(status_contrato == "ATV")
+  bhb.final = bhb.final %>% subset(situacao_contrato %in% c("CCA", "CCJ", "CEA", "CED"))
+  
   bhb.final = bhb.final %>% dplyr::mutate_at(dplyr::vars(dplyr::starts_with("data_")), funs(as.Date(as.character(.), format = "%d/%m/%Y")))
   plyr::revalue(bhb.final$situacao_produto, c(S = "Bem novo", N = "Bem usado"))
   
   # JOINING DATABASES: PAYMENTS & FECHAMENTO
-  
-  names(atrasos.count.by.ctr)[1] = "cod_contrato"
-  bhb.final <- left_join(bhb.final, atrasos.count.by.ctr); bhb.final = bhb.final %>% select(-MODAL.)
-  
+
+  # names(atrasos.count.by.ctr)[1] = "cod_contrato"
+  # bhb.final <- left_join(bhb.final, atrasos.count.by.ctr); #bhb.final = bhb.final %>% select(-MODAL.)
+
   # STANDARDIZING DATABASE & CREATING NEW VARIABLES FOR MODELLING
   
   bhb.final$vlr_renda_mensal_cli = ifelse(bhb.final$vlr_renda_mensal_cli == 1, NA, 
                                           bhb.final$vlr_renda_mensal_cli) 
   
-  bhb.final$`idade_cli` =  as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.final$data_nascimento), "years"))
-  bhb.final$`tempo_contrato_anos` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.final$data_contrato), "years"))
-  bhb.final$`tempo_contrato_meses` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.final$data_contrato), "months"))
-  bhb.final$`tempo_desde_ult_pgt` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.final$data_ult_pgt), "days"))
+  bhb.final$`idade_cli` =  as.integer(time_length(difftime(as.Date("2019-05-18", format = "%Y-%m-%d"), bhb.final$data_nascimento), "years"))
+  bhb.final$`tempo_contrato_anos` = as.integer(time_length(difftime(as.Date("2019-05-18", format = "%Y-%m-%d"), bhb.final$data_contrato), "years"))
+  bhb.final$`tempo_contrato_meses` = as.integer(time_length(difftime(as.Date("2019-05-18", format = "%Y-%m-%d"), bhb.final$data_contrato), "months"))
+  bhb.final$`tempo_desde_ult_pgt` = as.integer(time_length(difftime(as.Date("2019-05-18", format = "%Y-%m-%d"), bhb.final$data_ult_pgt), "days"))
   
   bhb.final$`perc_parc_pagas` = bhb.final$qtd_parc_pagas / (bhb.final$qtd_parc_pagas + bhb.final$qtd_parc_restantes)
   bhb.final$`perc_vnc_finan` = bhb.final$vlr_vencido / bhb.final$vlr_total_financiado
@@ -138,11 +141,11 @@ formatting_database = function(database){
   bhb.final$`perc_ult_pgt_parc` = bhb.final$vlr_ult_pgt / bhb.final$vlr_parcela
   bhb.final$`perc_a_vencer_finan` = bhb.final$vlr_a_vencer / bhb.final$vlr_total_financiado
   
-  bhb.final$`perc_pg_atr_1_10` = bhb.final$qtd_pg_atr_1_10_em_1_ano / bhb.final$qtd_pg_atr_em_1_ano
-  bhb.final$`perc_pg_atr_1_60` = bhb.final$qtd_pg_atr_1_60_em_1_ano / bhb.final$qtd_pg_atr_em_1_ano
-  bhb.final$`perc_pg_atr_11_60` = (bhb.final$qtd_pg_atr_11_30_em_1_ano + bhb.final$qtd_pg_atr_31_60_em_1_ano) / (bhb.final$qtd_pg_atr_em_1_ano)
-  bhb.final$`perc_pg_atr_61_360` = bhb.final$qtd_pg_atr_61_360_em_1_ano / bhb.final$qtd_pg_atr_em_1_ano
-  bhb.final$`perc_pg_atr_360_mais` = bhb.final$qtd_pg_atr_360_mais_em_1_ano/ bhb.final$qtd_pg_atr_em_1_ano
+  # bhb.final$`perc_pg_atr_1_10` = bhb.final$qtd_pg_atr_1_10_em_1_ano / bhb.final$qtd_pg_atr_em_1_ano
+  # bhb.final$`perc_pg_atr_1_60` = bhb.final$qtd_pg_atr_1_60_em_1_ano / bhb.final$qtd_pg_atr_em_1_ano
+  # bhb.final$`perc_pg_atr_11_60` = (bhb.final$qtd_pg_atr_11_30_em_1_ano + bhb.final$qtd_pg_atr_31_60_em_1_ano) / (bhb.final$qtd_pg_atr_em_1_ano)
+  # bhb.final$`perc_pg_atr_61_360` = bhb.final$qtd_pg_atr_61_360_em_1_ano / bhb.final$qtd_pg_atr_em_1_ano
+  # bhb.final$`perc_pg_atr_360_mais` = bhb.final$qtd_pg_atr_360_mais_em_1_ano/ bhb.final$qtd_pg_atr_em_1_ano
   
   bhb.final$`perc_parc_renda` = bhb.final$vlr_parcela/bhb.final$vlr_renda_mensal_cli
   bhb.final$`perc_pg_finan` = (bhb.final$vlr_parcela*bhb.final$qtd_parc_pagas)/bhb.final$vlr_total_financiado
@@ -158,13 +161,15 @@ formatting_database = function(database){
   
   # ADDING INFORMATIONS FROM CC (CYLINDER CAPACITY)
   cc = fread("de_para_cc.txt",  header = TRUE)
+  names(cc)[1] = "modelo"
   bhb.final = left_join(bhb.final, cc, by = "modelo")
   
   #########################
   #CLEANING CORE DATABASES#
   #########################
   
-  rm(atrasos.count.by.ctr, cc); gc(); gc()
+  rm(cc)
+#  rm(atrasos.count.by.ctr, cc); gc(); gc()
   
   # SUBSTITUTING ALL NUMERIC INFINITE/NAN WITH NA
   bhb.final <- bhb.final %>% mutate_if(is.numeric, funs(replace(., is.infinite(.), NA))) %>%
@@ -191,7 +196,7 @@ target_creation = function(database){
                                        -data_ult_alt, -proposta, -cod_plano, -vlr_subs_conc, -vlr_subs_marca, -vlr_taxa_subs_conc, -vlr_desp_finan,
                                        -car, -cod_pessoa, -data_ult_vencimento, -vlr_tx_subs_marc, -re, -data_ini_seguro, -data_fim_seguro,
                                        -data_prim_vencimento, -nome_renavam, -`for`, -contrato_cedido, -numero_contrato_cessao,
-                                       -coobrigacao_sem_n, -qtd_pg_atr_em_1_ano, -valor_pg_atr_em_1_ano, -qtd_pg_atr_1_10_em_1_ano,  
+                                       -coobrigacao_sem_n, -qtd_pg_atr_em_1_ano, -vlr_pg_atr_em_1_ano, -qtd_pg_atr_1_10_em_1_ano,  
                                        -vlr_pg_atr_1_10_em_1_ano, -qtd_pg_atr_11_30_em_1_ano, -vlr_pg_atr_11_30_em_1_ano, -qtd_pg_atr_1_30_em_1_ano,    
                                        -vlr_pg_atr_1_30_em_1_ano, -qtd_pg_atr_1_60_em_1_ano, -vlr_pg_atr_1_60_em_1_ano, -qtd_pg_atr_31_60_em_1_ano,   
                                        -vlr_pg_atr_31_60_em_1_ano, -qtd_pg_atr_61_360_em_1_ano, -vlr_pg_atr_61_360_em_1_ano, -qtd_pg_atr_360_mais_em_1_ano,
@@ -211,7 +216,7 @@ target_creation = function(database){
                                         -data_ult_alt, -proposta, -cod_plano, -vlr_subs_conc, -vlr_subs_marca, -vlr_taxa_subs_conc, -vlr_desp_finan,
                                         -car, -cod_pessoa, -data_ult_vencimento, -vlr_tx_subs_marc, -re, -data_ini_seguro, -data_fim_seguro,
                                         -data_prim_vencimento, -nome_renavam, -`for`, -contrato_cedido, -numero_contrato_cessao,
-                                        -coobrigacao_sem_n, -qtd_pg_atr_em_1_ano, -valor_pg_atr_em_1_ano, -qtd_pg_atr_1_10_em_1_ano,  
+                                        -coobrigacao_sem_n, -qtd_pg_atr_em_1_ano, -vlr_pg_atr_em_1_ano, -qtd_pg_atr_1_10_em_1_ano,  
                                         -vlr_pg_atr_1_10_em_1_ano, -qtd_pg_atr_11_30_em_1_ano, -vlr_pg_atr_11_30_em_1_ano, -qtd_pg_atr_1_30_em_1_ano,    
                                         -vlr_pg_atr_1_30_em_1_ano, -qtd_pg_atr_1_60_em_1_ano, -vlr_pg_atr_1_60_em_1_ano, -qtd_pg_atr_31_60_em_1_ano,   
                                         -vlr_pg_atr_31_60_em_1_ano, -qtd_pg_atr_61_360_em_1_ano, -vlr_pg_atr_61_360_em_1_ano, -qtd_pg_atr_360_mais_em_1_ano,
@@ -447,7 +452,7 @@ modelling = function(base_desired_model, desired_model, segment){
     scale_fill_manual(values=c("brown2", "darkorange1", "yellow2", "green4")) +
     theme(legend.position="bottom") +
     labs(x = "collection score", y = "density", fill = "cluster", color = "none", title = "Figure 2: Scorecard Distribution by four collection clusters for today's data",
-         caption = paste0("Based on data from IGB: ", segment, " | ", desired_model, " | ", "daily result: ", Sys.Date()))
+         caption = paste0("Based on data from IGB: ", segment, " | ", desired_model, " | ", "daily result: ", "2019-03-01"))
   
   both_plot <- grid.arrange(p1, p2, ncol = 1)
   
@@ -471,7 +476,7 @@ modelling = function(base_desired_model, desired_model, segment){
     scale_color_manual(values=c("brown2", "darkorange1", "yellow2", "green4")) +
     theme(legend.position="bottom") +
     labs(title=paste0("Collection model clusters | ", desired_model, " | ", segment), x="collection score", y="geometric mean of selected variable", col = "cluster",
-         caption = paste0("Based on data from IGB: ", segment, " | ", desired_model, " | ", "daily result: ", Sys.Date())) +
+         caption = paste0("Based on data from IGB: ", segment, " | ", desired_model, " | ", "daily result: ", "2019-03-01")) +
     guides(size = "none", colour = "legend")
   
     db_to_predict = db_to_predict %>% select_if(is.numeric )
@@ -482,15 +487,15 @@ modelling = function(base_desired_model, desired_model, segment){
                               theme(legend.position="bottom") +
                               scale_color_manual(values=c("brown2", "darkorange1", "yellow2", "green4")) +
       labs(title=paste0("Collection model clusters | ", desired_model, " | ", segment), x="collection score", y="geometric mean of selected variable", col = "cluster",
-           caption = paste0("Based on data from IGB: ", segment, " | ", desired_model, " | ", "daily result: ", Sys.Date()))
+           caption = paste0("Based on data from IGB: ", segment, " | ", desired_model, " | ", "daily result: ", "2019-03-01"))
 
   #####################################
   
   # plotting both plots together
-  ggsave(paste0("score_dist_desired_model_daily", "_", segment,"_", Sys.Date(),".tiff"), both_plot, units="in", width=12, height=8, 
+  ggsave(paste0("score_dist_desired_model_daily", "_", segment,"_", "2019-03-01",".tiff"), both_plot, units="in", width=12, height=8, 
          path = paste0("D:/Users/sb044936/Desktop/Modelling databases R/",desired_model,"/Daily Predictions/"))
   
-  filename=paste0("D:/Users/sb044936/Desktop/Modelling databases R/",desired_model,"/Daily Predictions/clusters_distribution_daily_",desired_model,"_",segment,"_",Sys.Date(),".tiff")
+  filename=paste0("D:/Users/sb044936/Desktop/Modelling databases R/",desired_model,"/Daily Predictions/clusters_distribution_daily_",desired_model,"_",segment,"_","2019-03-01",".tiff")
   tiff(filename, units="in", width=12, height=8, res=500)
   print(cluster_prob)
   dev.off()
@@ -499,19 +504,19 @@ modelling = function(base_desired_model, desired_model, segment){
   conf_db = as.data.frame(as.matrix(conf.matrix, what = "overall")); conf_db = rownames_to_column(conf_db, "statistic")
   conf_db2 = as.data.frame(as.matrix(conf.matrix, what = "classes")); conf_db2 = rownames_to_column(conf_db2, "statistic")
   conf = bind_rows(conf_db, conf_db2); colnames(conf) <- c("statistic", "value"); conf$value = round(conf$value, 4)
-  perf_stats1 = bind_rows(conf, df); perf_stats1 = perf_stats1 %>% mutate(stat_date = Sys.Date(), segment = segment, model = desired_model)
+  perf_stats1 = bind_rows(conf, df); perf_stats1 = perf_stats1 %>% mutate(stat_date = "2019-03-01", segment = segment, model = desired_model)
   perf_stats2 = as.data.frame(conf.matrix$table); perf_stats2 = perf_stats2 %>% dplyr::rename("prediction" = "Prediction",
                                                                                        "reference" = "Reference",
-                                                                                       "freq" = "Freq"); perf_stats2 = perf_stats2 %>% mutate(stat_date = Sys.Date(), segment = segment, model = desired_model)
+                                                                                       "freq" = "Freq"); perf_stats2 = perf_stats2 %>% mutate(stat_date = "2019-03-01", segment = segment, model = desired_model)
   
   #creating final database (new contracts)
   db_to_predict = final_db %>% select(cod_contrato, qtd_dias_em_atraso, prob_bad, prob_good, score, cluster) %>% mutate(stat_model = paste0(desired_model, " | ", segment),
-                                      stat_model_update = Sys.Date()) %>% filter(qtd_dias_em_atraso == 11 | qtd_dias_em_atraso == 61)
+                                      stat_model_update = "2019-03-01") %>% filter(qtd_dias_em_atraso == 11 | qtd_dias_em_atraso == 61)
   
   setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/", desired_model, "/Daily Predictions"))
-  fwrite(perf_stats1, file = paste0("performance_stats_daily_1_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
-  fwrite(perf_stats2, file = paste0("performance_stats_daily_2_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
-  fwrite(db_to_predict, file = paste0("score_by_contract_daily_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
+  fwrite(perf_stats1, file = paste0("performance_stats_daily_1_", desired_model, "_", segment,"_", "2019-03-01",".csv"), sep = ";", dec = ",")
+  fwrite(perf_stats2, file = paste0("performance_stats_daily_2_", desired_model, "_", segment,"_", "2019-03-01",".csv"), sep = ";", dec = ",")
+  fwrite(db_to_predict, file = paste0("score_by_contract_daily_", desired_model, "_", segment,"_", "2019-03-01",".csv"), sep = ";", dec = ",")
   }
 
 modelling_judge = function(base_desired_model, desired_model, segment){
@@ -621,15 +626,15 @@ modelling_judge = function(base_desired_model, desired_model, segment){
   conf_db = as.data.frame(as.matrix(conf.matrix, what = "overall")); conf_db = rownames_to_column(conf_db, "statistic")
   conf_db2 = as.data.frame(as.matrix(conf.matrix, what = "classes")); conf_db2 = rownames_to_column(conf_db2, "statistic")
   conf = bind_rows(conf_db, conf_db2); colnames(conf) <- c("statistic", "value"); conf$value = round(conf$value, 4)
-  # perf_stats1 = bind_rows(conf, df); perf_stats1 = perf_stats1 %>% mutate(stat_date = Sys.Date(), segment = segment, model = "61_360")
+  # perf_stats1 = bind_rows(conf, df); perf_stats1 = perf_stats1 %>% mutate(stat_date = "2019-03-01", segment = segment, model = "61_360")
   # perf_stats2 = as.data.frame(conf.matrix$table); perf_stats2 = perf_stats2 %>% dplyr::rename("prediction" = "Prediction",
   #                                                                                             "reference" = "Reference",
-  #                                                                                             "freq" = "Freq"); perf_stats2 = perf_stats2 %>% mutate(stat_date = Sys.Date(), segment = segment, model = "61_360")
+  #                                                                                             "freq" = "Freq"); perf_stats2 = perf_stats2 %>% mutate(stat_date = "2019-03-01", segment = segment, model = "61_360")
    
   
   # creating final database (new contracts)
-  db_to_predict = final_db %>% select(cod_contrato, segmento, qtd_dias_em_atraso, vlr_vencido, nome_estado_cli, 
-                                      nome_municipio_cli, vlr_renda_mensal_cli, prob_bad, prob_good, score, cluster) %>% 
+  db_to_predict = final_db %>% select(cod_contrato, segmento, modelo, modelo_cc, qtd_dias_em_atraso, parcela_atual, prazo_contrato,vlr_vencido, vlr_a_vencer, nome_estado_cli, 
+                                      nome_municipio_cli, vlr_renda_mensal_cli, vlr_total_financiado, prob_bad, prob_good, score, cluster) %>% 
                                dplyr::filter(qtd_dias_em_atraso >= 50) %>%
                                mutate(stat_model = paste0("61_360", " | ", segment),
                                       stat_model_update = Sys.Date()) 

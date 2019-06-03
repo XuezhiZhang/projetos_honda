@@ -120,7 +120,6 @@ index_by_sample_orig = all.orig %>% group_by(assessoria, segmento) %>% summarise
 
 counts_merge = bind_rows(count, count.orig)
 
-
 pic = ggplot(data=counts_merge, aes(x=nome_est_loja, y=delinquents, fill=assessoria)) +
   geom_bar(stat="identity", position = "fill") + theme_bw() +
   facet_wrap(~version+segmento) + coord_flip() +

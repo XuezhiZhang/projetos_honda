@@ -20,7 +20,7 @@ load("delay_count_by_contr.RData")
 
 # reading daily database
 setwd("~/IGB/Daily IGB")
-database = fread("igb_daily_06_02.txt", header = TRUE, 
+database = fread("igb_daily_01_03.txt", header = TRUE, 
                  dec = ",", check.names = TRUE, 
                  colClasses = c("Contrato" = "character",
                                 "Cep" = "character",

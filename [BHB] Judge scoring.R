@@ -14,7 +14,7 @@ fees = fread("fees.txt", header = TRUE, dec = ",", check.names = TRUE)
 y = list()
 setwd("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Daily Predictions - Judge")
 for(i in 1:length(desired_model)){
-  setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Daily Predictions - Judge"))
+  setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Daily Predictions - Judge/Março"))
   files = list.files(pattern=paste0("score_by_contract.*csv"))
   y = bind_rows(lapply(files, fread, colClasses = c(cod_contrato = "character", stat_model_update = "as.Date"), dec = ",", header = TRUE))
 }
@@ -43,8 +43,8 @@ join$scl_vlr_vnc_mais_enc = normalize(join$vlr_vnc_mais_enc, method = "range", r
 join$scl_perc_vlr_vnc_mais_enc_renda = normalize(join$perc_vlr_vnc_mais_enc_renda, method = "range", range = c(0,1))
 join$scl_var = normalize(join$var, method = "range", range = c(0,1))
 
-join = join %>% mutate(ranking_ajuiz = round((0.4*(1 - scl_perc_vlr_vnc_mais_enc_renda) +
-                                       0.3*scl_vlr_vencido +              
+join = join %>% mutate(ranking_ajuiz = round((0.5*(1 - scl_perc_vlr_vnc_mais_enc_renda) +
+                                       0.2*scl_vlr_vencido +              
                                        0.2*prob_good + 
                                        0.1*(1-scl_var))*1000),0)
 
@@ -52,7 +52,8 @@ join = join %>% select("cod_contrato", "segmento", "qtd_dias_em_atraso",
                        "nome_estado_cli", "nome_municipio_cli", "prob_bad",             
                        "prob_good","score", "cluster", "stat_model",           
                        "stat_model_update", "descricao_uf","vlr_medio_ajuiz",      
-                       "vlr_medio_despachante", "vlr_medio_leiloeiro", "perc_vlr_vnc_mais_enc_renda" ,"vlr_vencido", 
+                       "vlr_medio_despachante", "vlr_medio_leiloeiro", "perc_vlr_vnc_mais_enc_renda" ,"vlr_vencido", "vlr_a_vencer", 
+                       "vlr_total_financiado","modelo_cc", "modelo", "parcela_atual", "prazo_contrato",
                        "vlr_vnc_mais_enc", "var", "ranking_ajuiz") %>% arrange(desc(ranking_ajuiz)) %>% group_by(cod_contrato) %>% top_n(n = 1, wt = stat_model_update)
 
 setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Daily Predictions - Judge"))
@@ -63,12 +64,13 @@ join$ranking_break = cut(join$ranking_ajuiz, breaks = breaks)
 join$ranking_break_cod = cut(join$ranking_ajuiz, breaks = breaks, labels = FALSE)
 
 view = join %>% group_by(ranking_break) %>% 
-                summarise(n = n()) %>% filter(!is.na(ranking_break)) %>%
-                mutate(prop = (cumsum(n/sum(n)))*100, prop.n = cumsum(n),id = row_number()) %>%
+                dplyr::summarise(n = n()) %>% filter(!is.na(ranking_break)) %>%
+                mutate(prop = (cumsum(n/sum(n))), prop.n = cumsum(n), id = as.numeric(rownames(.))) %>%
                 arrange(desc(id)) %>%
-                mutate(prop2 = (cumsum(n/sum(n)))*100, prop2.n = cumsum(n)) %>%
-                select(-id)
+                mutate(prop2 = (cumsum(n/sum(n))), prop2.n = cumsum(n)) %>%
+                arrange(id) %>% select(-id)
 
+fwrite(view, file = paste0("cutoff_judge_ranking_",Sys.Date(),".csv"), sep = ";", dec = ",")
 
 #########
 # plots #
@@ -88,9 +90,7 @@ plot <- ggplot(join, aes(ranking_ajuiz, perc_vlr_vnc_mais_enc_renda*100)) +
                                         max(join$perc_vlr_vnc_mais_enc_renda, na.rm = TRUE)*100, by = 100),1))
 plot
 
-join2 = join %>% filter(segmento == "MOT")
-
-plot <- ggplot(join2, aes(ranking_ajuiz, vlr_vencido)) + 
+plot2 <- ggplot(join, aes(ranking_ajuiz, vlr_vencido)) + 
   geom_point(aes(colour = factor(cluster))) + 
   scale_color_manual(values=c("darkorange1", "yellow2", "brown2", "green4")) +
   labs(title = "Judge Ranking | 61-360",
@@ -99,9 +99,9 @@ plot <- ggplot(join2, aes(ranking_ajuiz, vlr_vencido)) +
        color = "cluster") +
   #facet_wrap(~ segmento) +
   theme(legend.position="bottom")
-plot
+plot2
 
-plot <- ggplot(join, aes(ranking_ajuiz, score)) + 
+plot3 <- ggplot(join, aes(ranking_ajuiz, score)) + 
   geom_point(aes(colour = factor(cluster))) + 
   scale_color_manual(values=c("darkorange1", "yellow2", "brown2", "green4")) +
   labs(title = "Judge Ranking | 61-360",
@@ -110,9 +110,9 @@ plot <- ggplot(join, aes(ranking_ajuiz, score)) +
        color = "cluster") +
   facet_wrap(~ segmento) +
   theme(legend.position="bottom")
-plot
+plot3
 
-plot <- ggplot(join, aes(ranking_ajuiz, var)) + 
+plot4 <- ggplot(join, aes(ranking_ajuiz, var)) + 
   geom_point(aes(colour = factor(cluster))) + 
   scale_color_manual(values=c("darkorange1", "yellow2", "brown2", "green4")) +
   labs(title = "Judge Ranking | 61-360",
@@ -121,6 +121,47 @@ plot <- ggplot(join, aes(ranking_ajuiz, var)) +
        color = "cluster") +
   facet_wrap(~ segmento) +
   theme(legend.position="bottom")
-plot
+plot4
 
 #################################
+
+plot_join = grid.arrange(plot, plot2, plot3, plot4, ncol = 2)
+ggsave(file=paste0("plot_judge_ranking_",Sys.Date(),".tiff"), plot_join, width = 20, height = 10)
+
+##############
+
+join = fread("judge_ranking_by_contract_daily_2019-04-30.csv", dec = ",", encoding = "UTF-8")
+
+join = join %>% mutate(saldo_devedor = vlr_vencido + vlr_a_vencer,
+                       parcelas_restantes = prazo_contrato - parcela_atual,
+                       saldo_amortizado = parcela_atual/prazo_contrato,
+                       elegibility = ifelse(saldo_devedor <= 1500 | str_detect(modelo, paste(c("POP","TRX","CRF"), collapse = "|")) | parcelas_restantes <= 6 | saldo_amortizado >= 0.8 | segmento == "CAR" | modelo_cc >= 500, FALSE, TRUE),
+                       ele_saldo_devedor = ifelse(saldo_devedor <= 1500, FALSE, TRUE),
+                       ele_modelo = ifelse(str_detect(modelo, paste(c("POP","TRX","CRF","P O P"), collapse = "|")), FALSE, TRUE),
+                       ele_parc_rest = ifelse(parcelas_restantes <= 6, FALSE, TRUE),
+                       ele_saldo_amor = ifelse(saldo_amortizado >= 0.8, FALSE, TRUE),
+                       ele_segmento = ifelse(segmento == "CAR", FALSE, TRUE),
+                       ele_modelo_cc = ifelse(modelo_cc >= 500, FALSE, TRUE),
+                       proposal1 = ifelse(score > 450, "ajuizamento", ifelse( 
+                                          score <= 450 & score > 300, "protesto", "campanha")),
+                       proposal2 = ifelse(score > 450, "protesto", ifelse( 
+                                          score <= 450 & score > 300, "ajuizamento", "campanha")))
+
+elegibility_true = join %>% filter(elegibility == TRUE)
+
+prop.table(table(join$elegibility))
+prop.table(table(elegibility_true$proposal1))
+prop.table(table(elegibility_true$proposal2))
+prop.table(table(join$modelo_cc, join$elegibility))
+
+setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/61_360/Daily Predictions - Judge"))
+fwrite(join, file = paste0("judge_ranking_by_contract_daily_", Sys.Date(),".csv"), sep = ";", dec = ",")
+
+view = join %>% group_by(ranking_break) %>% 
+  dplyr::summarise(n = n()) %>% filter(!is.na(ranking_break)) %>%
+  mutate(prop = (cumsum(n/sum(n))), prop.n = cumsum(n), id = as.numeric(rownames(.))) %>%
+  arrange(desc(id)) %>%
+  mutate(prop2 = (cumsum(n/sum(n))), prop2.n = cumsum(n)) %>%
+  arrange(id) %>% select(-id)
+
+fwrite(view, file = paste0("cutoff_judge_ranking_",Sys.Date(),".csv"), sep = ";", dec = ",")

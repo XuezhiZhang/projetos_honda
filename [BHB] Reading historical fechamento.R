@@ -1,17 +1,16 @@
 require(data.table)
 require(dplyr)  
 
-setwd("~/IGB/Histórico Fechamento/2018")
-
-load("2018.RData")
+setwd("~/IGB/Histórico Fechamento/2019/Abril")
+load("2019_04.RData")
 
   files = list.files(pattern="*txt")
-  l = sapply(files, fread, sep = "\t", dec = ",", colClasses = c("Contrato" = "character",
+  l = lapply(files, fread, sep = "\t", dec = ",", colClasses = c("Contrato" = "character",
                                                                  "Dt_Safra" = "character",
                                                                  "CPF_CNPJ" = "character"), check.names = TRUE,  na.strings = "")
 
   # script to find where the error is, step by step, archive by archive 
-  # (it will print where the loop stoped)
+  # (it will print where the loop stopped)
   
   # out.file = data.frame()
   # for(i in 1:length(files)){
@@ -26,10 +25,10 @@ load("2018.RData")
   
   # load("names_2019.RData")
   
-  db.2015 = l %>% bind_rows()
+  db.2019 = l %>% bind_rows()
   
-  db.2015 = db.2015 %>% select(-c(V60, V61, V62, V63, Contrat, Cod, Cod_HDA.1)) 
-  db.2015 = db.2015 %>% dplyr::rename("cod_contrato" = "Contrato",
+  db.2019 = db.2019 %>% select(-c(V61, V62, V63, V64, Cod, Modelo2)) 
+  db.2019 = db.2019 %>% dplyr::rename("cod_contrato" = "Contrato",
                                       "data_contrato" = "Data_Ctr",
                                       "tipo_pessoa" = "T",
                                       "cpf_cnpj" = "CPF_CNPJ",
@@ -60,15 +59,15 @@ load("2018.RData")
                                       "tabela" = "TAb_Negocia",
                                       "vlr_renda_mensal_cli" = "Renda_Mensal",
                                       "profissao_cli" = "Profissao",
-                                      "agr_profissao_cli" = "AGRUP..PROFISSÃO",
+                                      #"agr_profissao_cli" = "AGRUP..PROFISSÃO",
                                       "num_chassi" = "Chassi",
                                       "qtd_parcelas_pagas" = "Pcl_p",
-                                      "score" = "SCORE",                            
+                                      #"score" = "SCORE",                            
                                       "situacao_contrato" = "Sit",
                                       "faixa_atraso" = "FAIXA",
                                       "assessoria_cob" = "ASSESSORIA_COB",
                                       "assessoria" = "ASSESSORIA",
-                                      "assessoria_nova" = "NOVA.ASSESSORIA",
+                                      #"assessoria_nova" = "NOVA.ASSESSORIA",
                                       "status_cob" = "STATUS",
                                       "ano_contrato" = "Ano_Data_Ctr",
                                       "mes_contrato" = "Mes_Data_Ctr",
@@ -90,9 +89,9 @@ load("2018.RData")
                                       "perc_entrada" = "Perc",
                                       "status_contabil" = "St")
   
-  setwd("~/IGB/Histórico Fechamento/2015")
-  names.2015 = names(db.2015)
-  save(db.2015, file = "2015.RData")
+  setwd("~/IGB/Histórico Fechamento/2019")
+  names.2019 = names(db.2019)
+  save(db.2019, file = "2019.RData")
   save(names.2015, file = "names_2015.RData")
   x = data.frame(levels(as.factor(db.2015$data_safra)))
   fwrite(x, file = "levels_safra_2015.csv")

@@ -160,7 +160,7 @@ clustering <- function(probs_by_contract, desired_model, segment){
   dev.off()
 }
 
-writing <- function(lasso.model, selected_var, probs_by_contract, imp, desired_model, segment, perf_stats1, perrf_stats2){
+writing <- function(lasso.model, selected_var, probs_by_contract, imp, desired_model, segment, perf_stats1, perf_stats2){
 
 require(data.table)
 require(stringr)
@@ -176,7 +176,26 @@ require(stringr)
   fwrite(imp, file = paste0("var_importance_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
   fwrite(perf_stats1, file = paste0("performance_stats_1_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
   fwrite(perf_stats2, file = paste0("performance_stats_2_", desired_model, "_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
-  }
+}
+
+writing <- function(lasso.model, selected_var, probs_by_contract, bins_mod, imp, segment, perf_stats1, perf_stats2, x){
+  
+  require(data.table)
+  require(stringr)
+  
+  # Automatically creating files for desired outputs
+  setwd(paste0("D:/Users/sb044936/Desktop/Modelling databases R/New models [march 2019]/", segment))
+  save(lasso.model, file = paste0("lasso_model_", segment,"_", Sys.Date(),".RData"))
+  save(bins_mod, file = paste0("bins_", segment,"_", Sys.Date(),".RData"))
+  save(selected_var, file = paste0("selected_var_", segment,"_", Sys.Date(),".RData"))
+  save(probs_by_contract, file = paste0("probs_by_contract_", segment,"_", Sys.Date(),".RData"))
+  fwrite(probs_by_contract, file = paste0("lasso_model_predictions_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
+  fwrite(imp, file = paste0("var_importance_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
+  fwrite(perf_stats1, file = paste0("performance_stats_1_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
+  fwrite(perf_stats2, file = paste0("performance_stats_2_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")
+  fwrite(x, file = paste0("bins_splits_", segment,"_", Sys.Date(),".csv"), sep = ";", dec = ",")}
+
+
 
 #score = standard scorecard
 # develop_scorecard <- function(selected_var, desired_model, segment){

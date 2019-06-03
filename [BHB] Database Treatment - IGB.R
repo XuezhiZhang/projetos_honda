@@ -1,6 +1,6 @@
 require(data.table)
 require(dplyr)
-require(plyr)
+#require(plyr)
 require(lubridate)
 require(ggplot2)
 require(psych)
@@ -10,7 +10,30 @@ require(reshape2)
 #READING MONTHLY IGB FILE (Fechamento)
 setwd("R:/Estatística/BHB/Databases BHB/Fechamento BHB")
 setwd("D:/Users/sb044936/Documents/IGB/Backup")
-load("bhb_fecha_oct'18.RData")
+setwd("D:/Users/sb044936/Documents/IGB/Histórico Fechamento/2018")
+load("names_2015.RData")
+load("names_2016.RData")
+load("names_2017.RData")
+load("names_2018.RData")
+load("names_2019.RData")
+
+load("2018.RData")
+setdiff(names.2015, names.2016)
+setdiff(names.2015, names.2017)
+setdiff(names.2015, names.2018)
+setdiff(names.2015, names.2019)
+setdiff(names.2016, names.2017)
+setdiff(names.2016, names.2018)
+setdiff(names.2016, names.2019)
+setdiff(names.2017, names.2018)
+setdiff(names.2017, names.2019)
+setdiff(names.2018, names.2019)
+
+load("2015.RData"); levels(as.factor(db.2015$data_safra))
+load("2016.RData"); levels(as.factor(db.2016$data_safra))
+load("2017.RData"); levels(as.factor(db.2017$data_safra))
+load("2018.RData"); levels(as.factor(db.2018$data_safra))
+load("2019.RData"); levels(as.factor(db.2019$data_safra))
 
 bhb.fecha.dez.18 <- fread("bhbigbfin_0929320000.txt", header = TRUE, dec = ",", check.names = TRUE, colClasses = c("Contrato" = "character",
                                                                                                                    "Cep" = "character",
@@ -41,10 +64,14 @@ bhb.fecha.valid <- fread("bhbigbfin_1947220000.txt", header = TRUE, dec = ",", c
                                                                                                                       "Cep l" = "character",
                                                                                                                       "CPF CNPJ" = "character"))
 
+bhb.fecha.01.mar.2019 <- fread("igb_daily_01_03.txt", header = TRUE, dec = ",", check.names = TRUE, colClasses = c("Contrato" = "character",
+                                                                                                                  "Cep" = "character",
+                                                                                                                  "Cep l" = "character",
+                                                                                                                  "CPF CNPJ" = "character"))
 
 bhb.fecha = bind_rows(bhb.fecha.nov.18, bhb.fecha.oct.18); rm(bhb.fecha.nov.18, bhb.fecha.oct.18)
 bhb.fecha = bhb.fecha.dez.18
-setwd("D:/Users/sb044936/Documents/IGB")
+setwd("D:/Users/sb044936/Documents/IGB/Daily IGB")
 bhb.fecha <- list.files(pattern = "*.txt") %>%
              lapply(fread, stringsAsFactors=F,
              colClasses = c("Contrato" = "character",
@@ -65,10 +92,11 @@ load("bhb_final.RData")
 load("bhb_fecha_dez_18.RData")
 load("bhb_fecha_nov_18.RData")
 load("bhb_fecha_oct_18.RData")
+load("2016.RData")
 
 load("bhb_fecha.RData") #OCT, NOV, DEC
 
-bhb.final = valid %>%
+bhb.fecha.01.mar.2019 = bhb.fecha.01.mar.2019 %>%
   dplyr::rename("cod_contrato" = "Contrato",
                 "data_contrato" = "Data.Ctr",
                 "tipo_pessoa" = "T",
@@ -181,17 +209,17 @@ bhb.final = bhb.final %>% dplyr::mutate_at(dplyr::vars(dplyr::starts_with("data_
 #JOINING DATABASES: PAYMENTS & FECHAMENTO
 
 names(atrasos.count.by.ctr)[1] = "cod_contrato"
-bhb.final <- left_join(bhb.final, atrasos.count.by.ctr); bhb.final = bhb.final %>% select(-MODAL.)
+bhb.final <- left_join(db.2016, count.all, by = "cod_contrato")
 
 #STANDARDIZING DATABASE & CREATING NEW VARIABLES FOR MODELLING
 
 bhb.final$vlr_renda_mensal_cli = ifelse(bhb.final$vlr_renda_mensal_cli == 1, NA, 
                                         bhb.final$vlr_renda_mensal_cli) 
 
-bhb.final$`idade_cli` =  as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.final$data_nascimento), "years"))
-bhb.final$`tempo_contrato_anos` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.final$data_contrato), "years"))
-bhb.final$`tempo_contrato_meses` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.final$data_contrato), "months"))
-bhb.final$`tempo_desde_ult_pgt` = as.integer(time_length(difftime(as.Date(Sys.Date(), format = "%Y-%m-%d"), bhb.final$data_ult_pgt), "days"))
+bhb.final$`idade_cli` =  as.integer(time_length(difftime(as.Date("2017-10-31", format = "%Y-%m-%d"), bhb.final$data_nascimento), "years"))
+bhb.final$`tempo_contrato_anos` = as.integer(time_length(as.Date("2017-10-31", format = "%Y-%m-%d"), bhb.final$data_contrato), "years"))
+bhb.final$`tempo_contrato_meses` = as.integer(time_length(as.Date("2017-10-31", format = "%Y-%m-%d"), bhb.final$data_contrato), "months"))
+bhb.final$`tempo_desde_ult_pgt` = as.integer(time_length(as.Date("2017-10-31", format = "%Y-%m-%d"), bhb.final$data_ult_pgt), "days"))
 
 bhb.final$`perc_parc_pagas` = bhb.final$qtd_parc_pagas / (bhb.final$qtd_parc_pagas + bhb.final$qtd_parc_restantes)
 bhb.final$`perc_vnc_finan` = bhb.final$vlr_vencido / bhb.final$vlr_total_financiado
@@ -200,14 +228,16 @@ bhb.final$`perc_vnc_bens` = bhb.final$vlr_vencido / bhb.final$vlr_total_bens
 bhb.final$`perc_ult_pgt_parc` = bhb.final$vlr_ult_pgt / bhb.final$vlr_parcela
 bhb.final$`perc_a_vencer_finan` = bhb.final$vlr_a_vencer / bhb.final$vlr_total_financiado
 
-bhb.final$`perc_pg_atr_1_10` = bhb.final$qtd_pg_atr_1_10_em_1_ano / bhb.final$qtd_pg_atr_em_1_ano
-bhb.final$`perc_pg_atr_1_60` = bhb.final$qtd_pg_atr_1_60_em_1_ano / bhb.final$qtd_pg_atr_em_1_ano
-bhb.final$`perc_pg_atr_11_60` = (bhb.final$qtd_pg_atr_11_30_em_1_ano + bhb.final$qtd_pg_atr_31_60_em_1_ano) / (bhb.final$qtd_pg_atr_em_1_ano)
-bhb.final$`perc_pg_atr_61_360` = bhb.final$qtd_pg_atr_61_360_em_1_ano / bhb.final$qtd_pg_atr_em_1_ano
-bhb.final$`perc_pg_atr_360_mais` = bhb.final$qtd_pg_atr_360_mais_em_1_ano/ bhb.final$qtd_pg_atr_em_1_ano
+bhb.final$`perc_pg_atr_1_10` = bhb.final$qtd_pg_atr_1_10 / bhb.final$qtd_pg_atr
+bhb.final$`perc_pg_atr_1_60` = bhb.final$qtd_pg_atr_1_60 / bhb.final$qtd_pg_atr
+bhb.final$`perc_pg_atr_11_60` = (bhb.final$qtd_pg_atr_11_30 + bhb.final$qtd_pg_atr_31_60) / (bhb.final$qtd_pg_atr)
+bhb.final$`perc_pg_atr_61_360` = bhb.final$qtd_pg_atr_61_360 / bhb.final$qtd_pg_atr
+bhb.final$`perc_pg_atr_360_mais` = bhb.final$qtd_pg_atr_360_mais/ bhb.final$qtd_pg_atr
 
 bhb.final$`perc_parc_renda` = bhb.final$vlr_parcela/bhb.final$vlr_renda_mensal_cli
 bhb.final$`perc_pg_finan` = (bhb.final$vlr_parcela*bhb.final$qtd_parc_pagas)/bhb.final$vlr_total_financiado
+
+bhb.final$tempo_ate_primeiro_atr = as.integer(bhb.final$data_primeiro_atraso - bhb.final$data_contrato)
 
 #AGGREGATING OTHER DATABASES
 setwd("R:/Estatística/BHB/Databases BHB/Another fonts BHB")
@@ -220,7 +250,10 @@ rm(ibge); gc();gc()
 
 #adding cc (cilindradas) database
 cc = fread("de_para_cc.txt",  header = TRUE)
-bhb.final = left_join(bhb.final, cc, by = "modelo")
+bhb.final = left_join(bhb.final, cc, by = "nome_modelo")
+
+#################################
+bhb.final = bhb.final %>% filter(qtd_dias_em_atraso >= 1 & qtd_dias_em_atraso <= 30)
 
 #########################
 #CLEANING CORE DATABASES#
